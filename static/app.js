@@ -260,8 +260,11 @@ els.pick.onclick = async () => {
   const { folder } = await api("pick-folder");
   if (folder) load([folder]); else els.folder.focus();
 };
-els.folder.onkeydown = (e) => e.key === "Enter" && load([els.folder.value.trim()]);
-els.folder.onchange = () => els.folder.value.trim() && load([els.folder.value.trim()]);
+// Block bodies on purpose: an on<event> handler that returns false cancels the
+// event, and `e.key === "Enter" && ...` is false for every other key, which
+// silently swallowed all typing and Cmd/Ctrl+V.
+els.folder.onkeydown = (e) => { if (e.key === "Enter") load([els.folder.value.trim()]); };
+els.folder.onchange = () => { if (els.folder.value.trim()) load([els.folder.value.trim()]); };
 els.name.onclick = nameAll;
 els.rename.onclick = renameAll;
 els.undo.onclick = undo;
@@ -276,7 +279,9 @@ els.model.onchange = () => {
   showModelNote();
   if (!els.model.value) els.custom.focus();
 };
-els.settings.onkeydown = (e) => e.key === "Enter" && e.target.tagName === "INPUT" && (e.preventDefault(), els.save.click());
+els.settings.onkeydown = (e) => {
+  if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); els.save.click(); }
+};
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !els.rename.disabled) renameAll();
   if (e.key === "," && (e.metaKey || e.ctrlKey)) { e.preventDefault(); els.gear.click(); }
