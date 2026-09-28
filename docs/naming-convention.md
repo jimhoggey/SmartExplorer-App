@@ -74,5 +74,5 @@ Canon EOS R8 - User Manual
 
 - **Context** (the box under the folder path) applies to one batch: "Sun 12 Oct · Anchored series wk 3 · Ps Dave". The AI uses it to fill gaps, never to invent content that is not on the files.
 - **Names already in the folder** are sent to the AI as taken, so a new giving slide next to last week's `Giving` becomes something like `Giving - Love Offering` rather than a second `Giving`. Any clash it still makes shows as `(2)` in the review grid, before anything is renamed.
-- **Keep order** adds `01 `, `02 `… in the original order, so a deck imported into ProPresenter stays in sequence. The numbers are added by the app, not the AI.
+- **Keep order** adds `01 `, `02 `… in the original order, so a deck imported into ProPresenter stays in sequence. It turns itself on when the files are numbered in sequence (`1.png`, `2.png`…). The numbers are added by the app, not the AI, and editing a name never removes its number.
 - To change the convention for good (your church's own words, such as Offering instead of Giving), edit `conventions.py`.

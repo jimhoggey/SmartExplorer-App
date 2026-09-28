@@ -88,7 +88,7 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
 .spacer { flex: 1; }
 #stat { font-size: 13px; color: var(--mute); white-space: nowrap; }
 #stat b { color: var(--ink); }
-#stat .on { color: var(--accent); font-weight: 600; }
+#next { padding: 7px 14px; }
 
 /* ---------- page ---------- */
 .page { max-width: 1320px; margin: 0 auto; padding: 20px 24px 120px; }
@@ -98,6 +98,7 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
 }
 .bar, .opts { display: flex; gap: 8px; align-items: stretch; }
 .bar input { flex: 1; min-width: 0; font: 13px/1.3 var(--mono); color: var(--ink-2); }
+#folder.bad { border-color: var(--err); box-shadow: 0 0 0 3px rgba(217, 45, 32, .14); }
 .opts #context { flex: 1; min-width: 0; }
 .seg {
   display: flex; flex: none; padding: 3px; gap: 2px;
@@ -263,6 +264,11 @@ dialog label { display: block; margin-bottom: 16px; font-size: 13px; font-weight
 dialog label input, dialog label select { display: block; width: 100%; margin-top: 6px; font-weight: 400; font-size: 14px; }
 dialog label input { font-family: var(--mono); font-size: 13px; }
 dialog #custom { margin-top: 8px; }
+.keyrow { display: flex; gap: 8px; margin-top: 6px; }
+.keyrow input { flex: 1; min-width: 0; margin-top: 0; }
+.keyrow button { flex: none; font-weight: 600; }
+.spend { margin: -4px 0 14px; font-size: 13px; color: var(--ink-2); }
+.spend:empty { display: none; }
 dialog small { display: block; margin-top: 6px; min-height: 18px; font-size: 12.5px; font-weight: 400; color: var(--mute); }
 .msg { min-height: 18px; margin: -4px 0 16px; font-size: 13px; color: var(--mute); }
 .msg.ok { color: var(--ok); }

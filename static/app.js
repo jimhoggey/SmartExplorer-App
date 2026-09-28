@@ -1,15 +1,21 @@
 const $ = (id) => document.getElementById(id);
-const els = ["gear", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
-  "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "keymsg", "test", "cancel", "version",
+const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
+  "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
   "save"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
-let naming = false, loading = null;
+// loadGen: bumped by every load and by Clear, so a scan that finishes after a newer
+// load or a Clear is dropped instead of replacing what is on screen.
+let naming = false, loading = null, loadGen = 0;
 // What the guide line reports: the last naming run's cost (null until one ran for
 // these files) and how many files the last Rename changed.
 let lastCost = null, renamedCount = 0;
+// namedProfile: the style the suggestions on screen were made in. autoOrder: Keep order
+// was switched on for this batch because its files are numbered. drafts: the names
+// that went into the last Rename, so Undo can put them back as suggestions.
+let namedProfile = null, autoOrder = false, drafts = null;
 const FOLDER_HINT = els.folder.placeholder;
-const EMPTY_TEXT = [els.emptyTitle.textContent, els.emptyText.textContent];
+const EMPTY_TEXT = els.emptyText.textContent;
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -35,8 +41,29 @@ const inputs = () => [...els.grid.querySelectorAll(".name")];
 const parent = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const dollars = (usd) => "US$" + (usd >= 0.01 ? usd.toFixed(2) : usd.toFixed(4));
-const costText = (usd) => usd ? `This batch cost ${dollars(usd)} on OpenRouter.`
+// The month's total is added once other batches are in it too.
+const costText = (usd) => usd
+  ? `This batch cost ${dollars(usd)} on OpenRouter${status.spent_month > usd + 1e-9 ? ` (${dollars(status.spent_month)} this month)` : ""}.`
   : status.has_key ? "OpenRouter did not report a cost for this batch." : "";
+const styleName = (id) => (status.profiles.find((p) => p.id === id) || { label: id }).label;
+
+// Files numbered in sequence (1.png…14.png, Slide1…, Sermon.001…, or names that
+// already start 01, 02…): renamed without numbers they would sort A to Z in
+// ProPresenter, so Keep order starts on for them.
+function looksNumbered(list) {
+  const folders = {};
+  for (const it of list) (folders[parent(it.path)] = folders[parent(it.path)] || []).push(stem(it.name));
+  return list.length > 1 && Object.values(folders).every((stems) => {
+    const lead = stems.map((x) => (x.match(/^(\d+)[\s._-]/) || [])[1]);
+    const tails = stems.map((x) => x.replace(/\d+(?=\D*$)/, "#"));
+    const nums = lead.every(Boolean) ? lead
+      : tails.every((t) => t === tails[0] && t.includes("#")) ? stems.map((x) => x.match(/(\d+)\D*$/)[1])
+      : null;
+    // Small, distinct numbers: a deck (gaps allowed, for deleted slides), not a camera's IMG_4521.
+    const n = (nums || []).map(Number);
+    return n.length > 0 && new Set(n).size === n.length && Math.max(...n) <= 2 * n.length;
+  });
+}
 
 // Names wrap instead of being cut off, so every card shows its whole name.
 // scrollHeight leaves out the border, which border-box heights include.
@@ -75,8 +102,7 @@ function render() {
   els.grid.innerHTML = "";
   numberItems();
   els.empty.hidden = items.length > 0;
-  els.emptyTitle.textContent = "No files Smart Explorer can name in there";
-  els.emptyText.textContent = "It reads images (PNG, JPEG and more), iPhone photos (HEIC), PDFs and videos (MP4, MOV). Try another folder.";
+  showEmpty(true);
   items.forEach((it, n) => {
     const card = document.createElement("article");
     card.className = "card";
@@ -95,16 +121,29 @@ function render() {
       if (/[\r\n]/.test(inp.value)) inp.value = inp.value.replace(/\s*[\r\n]+\s*/g, " ");  // pasted lines
       updateChanged(inp, it);
     });
+    inp.addEventListener("focus", () => (inp.dataset.before = inp.value));
     inp.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || e.isComposing) return;  // isComposing: Enter picking an IME candidate
-      e.preventDefault();  // a name is one line; Cmd/Ctrl+Enter still reaches Rename
-      if (e.metaKey || e.ctrlKey) return;
-      const all = inputs(), next = all[all.indexOf(inp) + 1];
-      next ? (next.focus(), next.select()) : inp.blur();
+      if (e.isComposing) return;  // Enter or Escape is picking an input-method candidate
+      if (e.key === "Escape") {  // undo this edit
+        inp.value = inp.dataset.before ?? inp.value;
+        updateChanged(inp, it);
+        inp.blur();
+      } else if (e.key === "Enter") {
+        e.preventDefault();  // a name is one line; Cmd/Ctrl+Enter still reaches Rename
+        if (!e.metaKey && !e.ctrlKey) inp.blur();
+      }
     });
     els.grid.appendChild(card);
   });
   refreshCards();
+}
+
+function showEmpty(loaded) {
+  els.emptyTitle.textContent = loaded ? "No files Smart Explorer can name in there"
+    : profile === "general" ? "Drop a folder of files here" : "Drop a folder of slides here";
+  els.emptyText.textContent = loaded
+    ? "It reads images (PNG, JPEG and more), iPhone photos (HEIC), PDFs and videos (MP4, MOV). Try another folder."
+    : EMPTY_TEXT;
 }
 
 function refreshCards() {
@@ -129,15 +168,31 @@ function updateButtons() {
   els.rename.disabled = !changed || naming;
   els.clear.disabled = !items.length || naming;
   els.rename.textContent = changed ? `Rename ${plural(changed, "file")}` : "Rename";
-  // The orange button is always the next step: Name, then Rename, then Clear.
+  // The coloured button is always the next step: Name, then Rename, then Clear.
   const done = !changed && renamedCount > 0 && !naming;
-  els.name.classList.toggle("primary", !changed && !done);
-  els.rename.classList.toggle("primary", changed > 0);
+  const restyle = restyled(changed);
+  els.name.classList.toggle("primary", (!changed && !done) || restyle);
+  els.rename.classList.toggle("primary", changed > 0 && !restyle);
   els.clear.classList.toggle("primary", done);
   els.stat.innerHTML = items.length
-    ? `<b>${items.length}</b> file${items.length === 1 ? "" : "s"}${changed ? ` · <span class="on">${changed} to rename</span>` : ""}`
+    ? `<b>${items.length}</b> file${items.length === 1 ? "" : "s"}${changed ? ` · ${changed} to rename` : ""}`
     : "";
   showFlow(changed);
+  showNext();
+}
+
+// Suggestions made in one style while the other is now picked.
+const restyled = (changed) => changed > 0 && !naming && namedProfile !== null && namedProfile !== profile;
+
+// Once the toolbar has scrolled out of sight, the header offers the next step.
+let barInView = true;
+function showNext() {
+  const next = [els.name, els.rename, els.clear].find((b) => b.classList.contains("primary"));
+  els.next.hidden = barInView || !next || !items.length;
+  if (!next) return;
+  els.next.textContent = next.textContent;
+  els.next.disabled = next.disabled;
+  els.next.onclick = () => next.click();
 }
 
 // The three steps, where you are, and what to do next. Built from numbers only.
@@ -149,10 +204,12 @@ function showFlow(changed) {
     li.classList.toggle("on", n + 1 === step);
     li.classList.toggle("done", n + 1 < step);
   });
+  const order = autoOrder && els.order.checked ? " <b>Keep order</b> is on because these files are numbered in order." : "";
   let html = naming ? `Reading ${plural(items.length, "file")} and choosing names…`
+    : restyled(changed) ? `These names are in <b>${styleName(namedProfile)}</b> style. Click <b>Name with AI</b> to redo them in <b>${styleName(profile)}</b> style, or rename them as they are.`
     : changed ? `<b>Next:</b> check the names below and click any to change it, then <b>Rename ${plural(changed, "file")}</b>. Nothing on disk changes until you do, and you can Undo.`
     : renamedCount ? `<b>Done:</b> renamed ${plural(renamedCount, "file")}${journal ? ' (<button type="button" class="link" data-undo>Undo</button>)' : ""}. <b>Next:</b> Clear, then load the next set.`
-    : "<b>Next:</b> Name with AI suggests a name for every file. Nothing on disk changes yet.";
+    : `<b>Next:</b> Name with AI suggests a name in <b>${styleName(profile)}</b> style for every file. Nothing on disk changes yet.${order}`;
   const cost = naming || lastCost === null ? "" : costText(lastCost);
   if (cost) html += ` <span class="cost">${cost}</span>`;
   els.guide.innerHTML = html;
@@ -170,15 +227,30 @@ async function load(paths, afterRename = false) {
   paths = paths.filter(Boolean);
   if (!paths.length) return;
   if (naming) return toast("Wait for naming to finish before loading more files.", { error: true });
+  const gen = ++loadGen;
   const run = (async () => {
     try {
-      items = (await api("scan", { paths })).items;
-      if (!afterRename) lastCost = null, renamedCount = 0;  // new files: a fresh start
+      const found = (await api("scan", { paths })).items;
+      if (gen !== loadGen) return;
+      items = found;
+      if (!afterRename) {  // new files: a fresh start, with nothing carried over from the last set
+        lastCost = null;
+        renamedCount = 0;
+        namedProfile = null;
+        drafts = null;
+        els.order.checked = autoOrder = looksNumbered(items);
+      }
       sources = paths;
+      els.folder.classList.remove("bad");
       render();
       showSources();
       els.progress.hidden = true;
-    } catch (e) { toast(e.message, { error: true }); }
+    } catch (e) {
+      if (gen !== loadGen) return;
+      // Keep the typed path to correct, marked, so it is not mistaken for the list below.
+      els.folder.classList.add("bad");
+      toast(e.message, { error: true });
+    }
   })();
   loading = run;
   try { await run; } finally { if (loading === run) loading = null; }
@@ -189,6 +261,7 @@ async function nameAll() {
   // name what that load shows, not the list it is about to replace.
   if (loading) await loading;
   if (naming || !items.length) return;
+  const style = profile;
   naming = true;
   renamedCount = 0;
   lastCost = null;  // the last batch's cost would read as this one's
@@ -200,7 +273,7 @@ async function nameAll() {
   updateButtons();  // step 2 lights up and the guide says what is happening
   try {
     const { job } = await api("name", {
-      paths: items.map((i) => i.path), profile, context: els.context.value.trim(),
+      paths: items.map((i) => i.path), profile: style, context: els.context.value.trim(),
     });
     let r;
     do {
@@ -223,12 +296,14 @@ async function nameAll() {
     fitAll();
     els.progress.firstElementChild.style.width = "100%";
     lastCost = r.cost || 0;
+    namedProfile = style;
+    drafts = null;
+    Object.assign(status, await api("status").catch(() => ({})));  // this month's total, for the guide
     const bad = errors + missing;
     toast(why ? why
       : missing ? `${plural(missing, "file")} ${missing === 1 ? "is" : "are"} no longer there. Load the folder again before renaming.`
       : errors ? `Named ${items.length - errors} of ${items.length}. ${errors} could not be read.`
       : `Named ${plural(items.length, "file")}. ${costText(lastCost)}`, { error: bad > 0 });
-    inputs()[0] && inputs()[0].focus();
   } catch (e) {
     toast(e.message, { error: true });
     inputs().forEach((i) => (i.closest(".card").className = "card"));
@@ -254,9 +329,11 @@ async function renameAll() {
   const changed = items.map((it, i) => ({ path: it.path, new_name: finalName(it, inp[i]) }))
     .filter((x, i) => x.new_name && x.new_name !== stem(items[i].name));
   if (!changed.length) return;
+  const kept = new Map(items.map((it, i) => [it.path, { name: inp[i].value, named: !!it.named }]));
   try {
     const r = await api("rename", { items: changed });
     journal = r.renamed ? r.journal : null;
+    drafts = r.renamed ? kept : null;
     renamedCount = r.renamed;
     follow(r.moved);
     const msg = `Renamed ${plural(r.renamed, "file")}`;
@@ -272,8 +349,18 @@ async function undo() {
     journal = null;
     renamedCount = 0;
     follow(r.moved);
-    toast(`Restored ${plural(r.restored, "file")}`);
     await load(sources, true);
+    // The files have their old names again; the suggestions and edits come back
+    // too, so fixing one name does not mean paying to name them all again.
+    const back = drafts || new Map();
+    drafts = null;
+    let kept = 0;
+    inputs().forEach((inp, n) => {
+      const d = back.get(items[n].path);
+      if (d) { inp.value = d.name; items[n].named = d.named; kept++; }
+    });
+    if (kept) refreshCards();
+    toast(`Old names are back on ${plural(r.restored, "file")}.${kept ? " Your suggestions are still below." : ""}`);
   } catch (e) { toast(e.message, { error: true }); }
 }
 
@@ -282,13 +369,19 @@ function clearAll() {
   if (naming) return;
   const pending = inputs().filter((i) => i.classList.contains("changed")).length;
   if (pending && !confirm(`Clear the list and drop ${plural(pending, "suggested name")} you have not applied? Files on disk are not changed.`)) return;
+  loadGen++;  // a folder still loading (say, a path just typed) must not refill the list
   items = [];
   sources = [];
   lastCost = null;
   renamedCount = 0;
+  namedProfile = null;
+  drafts = null;
+  els.order.checked = autoOrder = false;
+  els.context.value = "";  // the note was about the set just cleared
   render();
-  [els.emptyTitle.textContent, els.emptyText.textContent] = EMPTY_TEXT;
+  showEmpty(false);
   els.folder.value = "";
+  els.folder.classList.remove("bad");
   els.folder.placeholder = FOLDER_HINT;
   els.progress.hidden = true;
 }
@@ -303,7 +396,11 @@ function renderProfiles() {
     b.setAttribute("aria-checked", String(p.id === profile));
     b.title = p.id === "propresenter" ? "Names for the ProPresenter media bin: Category - Subject - Detail"
       : "Names for everyday files on disk: date first when the file has one";
-    b.onclick = () => { profile = p.id; renderProfiles(); };
+    b.onclick = () => {
+      profile = p.id;
+      renderProfiles();
+      if (items.length) updateButtons(); else if (!sources.length) showEmpty(false);
+    };
     els.profile.appendChild(b);
   }
 }
@@ -322,7 +419,12 @@ function fillSettings() {
   els.custom.hidden = known;
   els.custom.value = known ? "" : status.model;
   els.key.value = "";
+  els.key.type = "password";
+  els.showkey.textContent = "Show";
   els.key.placeholder = status.has_key ? "•••••••• (saved, leave blank to keep)" : "sk-or-…";
+  els.spend.textContent = status.spent_total
+    ? `Spent on naming: ${dollars(status.spent_month || 0)} this month, ${dollars(status.spent_total)} in all.`
+    : "";
   els.keymsg.textContent = "";
   els.keymsg.className = "msg";
   els.version.textContent = status.version ? `Smart Explorer ${status.version}` : "";
@@ -363,7 +465,7 @@ document.addEventListener("drop", (e) => {
 });
 window.onDropPaths = (paths) => {
   els.drop.hidden = true;
-  paths.length ? load(paths) : toast("Could not read the dropped items. Try Pick folder.", { error: true });
+  paths.length ? load(paths) : toast("Could not read the dropped items. Try Choose folder.", { error: true });
 };
 
 els.pick.onclick = els.pickEmpty.onclick = async () => {
@@ -377,9 +479,17 @@ els.folder.onkeydown = (e) => { if (e.key === "Enter") load([els.folder.value.tr
 els.folder.onchange = () => { if (els.folder.value.trim()) load([els.folder.value.trim()]); };
 els.context.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing && !els.name.disabled) nameAll(); };
 els.order.onchange = () => {  // numbers come and go at once, no need to name again
+  autoOrder = false;
   refreshCards();
-  api("settings", { keep_order: els.order.checked }).catch((e) => toast(e.message, { error: true }));
 };
+els.folder.oninput = () => els.folder.classList.remove("bad");
+els.showkey.onclick = () => {
+  const show = els.key.type === "password";
+  els.key.type = show ? "text" : "password";
+  els.showkey.textContent = show ? "Hide" : "Show";
+};
+new IntersectionObserver(([e]) => { barInView = e.isIntersecting; showNext(); },
+  { rootMargin: `-${document.querySelector("header").offsetHeight}px 0px 0px 0px` }).observe(document.querySelector(".bar"));
 let fitting = 0;
 window.addEventListener("resize", () => { cancelAnimationFrame(fitting); fitting = requestAnimationFrame(fitAll); });
 els.name.onclick = nameAll;
@@ -409,8 +519,8 @@ document.addEventListener("keydown", (e) => {
 api("status").then((s) => {
   status = s;
   profile = s.profile || profile;
-  els.order.checked = !!s.keep_order;
   renderProfiles();
+  showEmpty(false);
   fillSettings();
   if (!s.has_key) els.settings.showModal();
 });

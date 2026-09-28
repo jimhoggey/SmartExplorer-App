@@ -1,6 +1,7 @@
 import os
 import re
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -19,13 +20,36 @@ app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 JOBS, LOCK = {}, threading.Lock()
 
 
+def spending(c):
+    """What naming has cost on OpenRouter, per month ("2026-09": 0.34), as saved in the config."""
+    spend = c.get("spend")
+    return {m: v for m, v in spend.items() if isinstance(v, (int, float)) and not isinstance(v, bool)} \
+        if isinstance(spend, dict) else {}
+
+
+def record_spend(usd):
+    """Add a naming batch's cost to this month's total, so Settings can show a running total."""
+    if not usd:
+        return
+    with LOCK:
+        spend = spending(config.load())
+        month = time.strftime("%Y-%m")
+        spend[month] = round(spend.get(month, 0.0) + usd, 6)
+        config.save(spend=spend)
+
+
 def status():
     c = config.load()
+    spend = spending(c)
     return {"version": APP_VERSION, "has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
             "profiles": [{"id": k, "label": v["label"]} for k, v in conventions.PROFILES.items()],
-            # the naming options last used, so the next launch starts the same way
+            # the naming style last used, so the next launch starts the same way
             "profile": c.get("profile") if c.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE,
-            "keep_order": bool(c.get("keep_order"))}
+            "spent_month": round(spend.get(time.strftime("%Y-%m"), 0.0), 6),
+            "spent_total": round(sum(spend.values()), 6)}
+
+
+NOT_FOUND = "Can't find that folder. Check the spelling, or use Choose folder."
 
 
 def paths_or_none():
@@ -55,11 +79,8 @@ def api_status():
 
 @app.post("/api/settings")
 def api_settings():
-    body = request.get_json()
-    changes = {k: v for k, v in body.items() if k in ("key", "model") and isinstance(v, str)}
-    if isinstance(body.get("keep_order"), bool):
-        changes["keep_order"] = body["keep_order"]
-    config.save(**changes)
+    with LOCK:  # a naming job can be saving its cost at the same moment
+        config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model") and isinstance(v, str)})
     return jsonify(status())
 
 
@@ -72,7 +93,7 @@ def api_check_key():
 def api_scan():
     paths = paths_or_none()
     if not paths:
-        return jsonify(error="Not a folder or file"), 400
+        return jsonify(error=NOT_FOUND), 400
     items = scanner.scan(*paths)
     with ThreadPoolExecutor(8) as ex:
         thumbs = list(ex.map(thumb, items))
@@ -83,13 +104,14 @@ def api_scan():
 def api_name():
     paths = paths_or_none()
     if not paths:
-        return jsonify(error="Not a folder or file"), 400
+        return jsonify(error=NOT_FOUND), 400
     key = config.load().get("key")
     if not key and os.environ.get("SMART_EXPLORER_MOCK") != "1":
         return jsonify(error="Add your OpenRouter key in Settings"), 400
     body = request.get_json()
     profile = body.get("profile") if body.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE
-    config.save(profile=profile)
+    with LOCK:
+        config.save(profile=profile)
     opts = {"profile": profile, "context": str(body.get("context") or "")[:2000]}
     items = scanner.scan(*paths)
     opts["existing"] = scanner.siblings(items)
@@ -110,6 +132,7 @@ def api_name():
             # and this scan can differ if files land or leave in between.
             job["results"] = {r["path"]: {"proposed": r["proposed"], "error": r.get("error")} for r in out["results"]}
             job["cost"] = out["cost"]
+            record_spend(out["cost"])
         except Exception as e:
             job["error"] = str(e)
         job["done"] = True

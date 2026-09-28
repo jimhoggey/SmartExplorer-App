@@ -18,6 +18,7 @@
   </div>
   <span class="spacer"></span>
   <div id="stat" aria-live="polite"></div>
+  <button id="next" class="primary" hidden></button>
   <button id="gear" class="ghost" title="Settings (Ctrl+,)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3.2"/>
@@ -80,13 +81,17 @@
       <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key from OpenRouter</a>
       (add some credit there first), paste it here, then click Test key.</p>
     <label>OpenRouter API key
-      <input id="key" type="password" placeholder="sk-or-…" autocomplete="off" spellcheck="false">
+      <span class="keyrow">
+        <input id="key" type="password" placeholder="sk-or-…" autocomplete="off" spellcheck="false">
+        <button type="button" id="showkey" aria-label="Show or hide the key">Show</button>
+      </span>
     </label>
     <label>AI model
       <select id="model"></select>
       <input id="custom" type="text" placeholder="provider/model-id" hidden spellcheck="false" aria-label="Custom model id">
       <small id="modelnote"></small>
     </label>
+    <p id="spend" class="spend"></p>
     <p id="keymsg" class="msg" aria-live="polite"></p>
     <div class="actions">
       <button type="button" id="test">Test key</button>
