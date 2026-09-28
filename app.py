@@ -55,7 +55,11 @@ def api_status():
 
 @app.post("/api/settings")
 def api_settings():
-    config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model") and isinstance(v, str)})
+    body = request.get_json()
+    changes = {k: v for k, v in body.items() if k in ("key", "model") and isinstance(v, str)}
+    if isinstance(body.get("keep_order"), bool):
+        changes["keep_order"] = body["keep_order"]
+    config.save(**changes)
     return jsonify(status())
 
 
@@ -85,9 +89,8 @@ def api_name():
         return jsonify(error="Add your OpenRouter key in Settings"), 400
     body = request.get_json()
     profile = body.get("profile") if body.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE
-    config.save(profile=profile, keep_order=bool(body.get("keep_order")))
-    opts = {"profile": profile, "context": str(body.get("context") or "")[:2000],
-            "keep_order": bool(body.get("keep_order"))}
+    config.save(profile=profile)
+    opts = {"profile": profile, "context": str(body.get("context") or "")[:2000]}
     items = scanner.scan(*paths)
     opts["existing"] = scanner.siblings(items)
     jid = uuid.uuid4().hex

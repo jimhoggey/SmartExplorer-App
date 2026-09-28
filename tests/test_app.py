@@ -104,9 +104,17 @@ def test_name_explicit_paths_with_options(client, folder):
         if r["done"]:
             break
         time.sleep(0.05)
-    assert r["results"] == {str(folder / "b.png"): {"proposed": "01 Slide 1", "error": None}}
-    s = client.get("/api/status").get_json()
-    assert s["profile"] == "general" and s["keep_order"] is True  # remembered for next launch
+    # Keep order's numbers are the window's job (they sit outside the editable name), not the server's.
+    assert r["results"] == {str(folder / "b.png"): {"proposed": "Slide 1", "error": None}}
+    assert client.get("/api/status").get_json()["profile"] == "general"  # remembered for next launch
+
+
+def test_keep_order_is_remembered(client):
+    assert client.post("/api/settings", json={"keep_order": True}).get_json()["keep_order"] is True
+    assert client.get("/api/status").get_json()["keep_order"] is True
+    client.post("/api/settings", json={"keep_order": "yes"})  # only a real true/false is saved
+    assert config.load()["keep_order"] is True
+    assert client.post("/api/settings", json={"keep_order": False}).get_json()["keep_order"] is False
 
 
 def test_name_unknown_profile_falls_back(client, folder):

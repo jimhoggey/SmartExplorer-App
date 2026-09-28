@@ -78,6 +78,6 @@ Tests: `python -m pytest -q`. Build locally: `pip install pyinstaller && pyinsta
 
 1. Set the new number in `version.py` (e.g. `0.2.1`) and merge it to `main`.
 2. Tag that commit and push the tag: `git tag v0.2.1 && git push origin v0.2.1`.
-3. GitHub Actions builds the Apple Silicon and Intel `.dmg` files and the Windows installer, checks each one (the app starts and reads PNG, HEIC and PDF; the Windows installer installs, starts and uninstalls), and publishes them as a release, in about 15 to 20 minutes. Point people at [releases/latest](../../releases/latest).
+3. GitHub Actions builds the Apple Silicon and Intel `.dmg` files and the Windows installer, checks each one (the app starts and reads PNG, HEIC and PDF; the Windows installer installs, starts and uninstalls), and publishes them as a release, in about five minutes. Point people at [releases/latest](../../releases/latest).
 
 The tag must match `version.py` or nothing is published. *Actions → build → Run workflow* builds the same files without publishing, for testing; download them from the run's *Artifacts*.

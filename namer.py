@@ -289,21 +289,8 @@ def name_all(key, model, descs, profile=conventions.DEFAULT_PROFILE, context="",
     return _dedupe((clean(n, d["original"]) or fallback(d) for n, d in zip(names, descs)), existing), err, cost
 
 
-def number(items, names):
-    """Prefix 01, 02... per folder in scan order, so ProPresenter imports keep the original order."""
-    totals, seen, out = {}, {}, []
-    for it in items:
-        folder = str(Path(it["path"]).parent)
-        totals[folder] = totals.get(folder, 0) + 1
-    for it, n in zip(items, names):
-        folder = str(Path(it["path"]).parent)
-        seen[folder] = seen.get(folder, 0) + 1
-        out.append("%0*d %s" % (max(2, len(str(totals[folder]))), seen[folder], n))
-    return out
-
-
 def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, context="",
-        keep_order=False, existing=()):
+        existing=()):
     """Name every item. Returns {"results": [{id, path, proposed, error?}], "cost": USD}.
     existing: names already taken by other files in the same folders."""
     notify = on_progress or (lambda *a: None)
@@ -341,8 +328,6 @@ def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT
     names, name_err, name_cost = name_all(key, model, ok, *opts, existing=existing) if ok else ([], None, 0.0)
     proposed = dict(zip((d["i"] for d in ok), names))
     chosen = [proposed.get(i, Path(it["name"]).stem) for i, it in enumerate(items)]
-    if keep_order:
-        chosen = number(items, chosen)
     out = []
     for it, d, name in zip(items, descs, chosen):
         r = {"id": it["id"], "path": it["path"], "proposed": name}
@@ -368,10 +353,8 @@ def check_key(key):
     return out
 
 
-def mock_run(items, on_progress=None, keep_order=False, **_):
+def mock_run(items, on_progress=None, **_):
     names = ["Slide %d" % i for i in range(1, len(items) + 1)]
-    if keep_order:
-        names = number(items, names)
     out = []
     for it, n in zip(items, names):
         r = {"id": it["id"], "path": it["path"], "proposed": n}

@@ -31,15 +31,49 @@ function toast(msg, opts = {}) {
 }
 
 const stem = (name) => name.replace(/\.[^.]+$/, "");
-const inputs = () => [...els.grid.querySelectorAll("input.name")];
+const inputs = () => [...els.grid.querySelectorAll(".name")];
 const parent = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const dollars = (usd) => "US$" + (usd >= 0.01 ? usd.toFixed(2) : usd.toFixed(4));
 const costText = (usd) => usd ? `This batch cost ${dollars(usd)} on OpenRouter.`
   : status.has_key ? "OpenRouter did not report a cost for this batch." : "";
 
+// Names wrap instead of being cut off, so every card shows its whole name.
+// scrollHeight leaves out the border, which border-box heights include.
+const fullHeight = (b) => b.scrollHeight + b.offsetHeight - b.clientHeight;
+function fit(box) {
+  box.style.height = "auto";
+  box.style.height = fullHeight(box) + "px";
+}
+function fitAll() {  // read every height before setting any: one layout, not one per card
+  const boxes = inputs();
+  boxes.forEach((b) => (b.style.height = "auto"));
+  const heights = boxes.map(fullHeight);
+  boxes.forEach((b, n) => (b.style.height = heights[n] + "px"));
+}
+
+// Keep order's 01, 02… prefixes: per folder, in list order, at least two digits.
+function numberItems() {
+  const totals = {}, seen = {};
+  for (const it of items) totals[parent(it.path)] = (totals[parent(it.path)] || 0) + 1;
+  for (const it of items) {
+    const f = parent(it.path);
+    seen[f] = (seen[f] || 0) + 1;
+    it.num = String(seen[f]).padStart(Math.max(2, String(totals[f]).length), "0");
+  }
+}
+
+// Numbers go on suggested names only, and sit outside the editable text so
+// editing a name cannot drop its number and move the file out of order.
+const numbered = (it) => els.order.checked && !!it.named;
+function finalName(it, box) {
+  const base = box.value.trim();
+  return base && numbered(it) ? `${it.num} ${base}` : base;
+}
+
 function render() {
   els.grid.innerHTML = "";
+  numberItems();
   els.empty.hidden = items.length > 0;
   els.emptyTitle.textContent = "No files Smart Explorer can name in there";
   els.emptyText.textContent = "It reads images (PNG, JPEG and more), iPhone photos (HEIC), PDFs and videos (MP4, MOV). Try another folder.";
@@ -49,28 +83,44 @@ function render() {
     card.dataset.id = it.id;
     card.style.setProperty("--i", n);
     const badge = it.kind === "image" ? "" : `<span class="kind">${it.kind === "pdf" ? "PDF" : "VIDEO"}</span>`;
-    card.innerHTML = `<div class="thumb"><img alt=""><span class="idx">${String(n + 1).padStart(2, "0")}</span>${badge}</div>
-      <div class="meta"><div class="orig"></div><input class="name" spellcheck="false" placeholder="—" aria-label="New name"></div>`;
+    card.innerHTML = `<div class="thumb"><img alt="">${badge}</div>
+      <div class="meta"><div class="orig"></div>
+      <div class="namebox"><span class="num" hidden title="Keep order puts this number in front of the name"></span>
+      <textarea class="name" rows="1" spellcheck="false" placeholder="—" aria-label="New name"></textarea></div></div>`;
     if (it.thumb) card.querySelector("img").src = "data:image/jpeg;base64," + it.thumb;
     card.querySelector(".orig").textContent = card.querySelector(".orig").title = it.name;
-    const inp = card.querySelector("input");
+    const inp = card.querySelector(".name");
     inp.value = stem(it.name);
-    inp.addEventListener("input", () => updateChanged(inp, it));
+    inp.addEventListener("input", () => {
+      if (/[\r\n]/.test(inp.value)) inp.value = inp.value.replace(/\s*[\r\n]+\s*/g, " ");  // pasted lines
+      updateChanged(inp, it);
+    });
     inp.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" || e.metaKey || e.ctrlKey) return;
+      if (e.key !== "Enter" || e.isComposing) return;  // isComposing: Enter picking an IME candidate
+      e.preventDefault();  // a name is one line; Cmd/Ctrl+Enter still reaches Rename
+      if (e.metaKey || e.ctrlKey) return;
       const all = inputs(), next = all[all.indexOf(inp) + 1];
       next ? (next.focus(), next.select()) : inp.blur();
     });
     els.grid.appendChild(card);
   });
+  refreshCards();
+}
+
+function refreshCards() {
+  inputs().forEach((inp, n) => updateChanged(inp, items[n], false));
+  fitAll();
   updateButtons();
 }
 
-function updateChanged(inp, it) {
-  const changed = inp.value.trim() !== stem(it.name);
+function updateChanged(inp, it, one = true) {
+  const name = finalName(it, inp), changed = !!name && name !== stem(it.name);
+  const num = inp.previousElementSibling;
+  num.hidden = !numbered(it);
+  num.textContent = it.num;
   inp.classList.toggle("changed", changed);
   inp.closest(".card").classList.toggle("is-changed", changed);
-  updateButtons();
+  if (one) { fit(inp); updateButtons(); }
 }
 
 function updateButtons() {
@@ -141,15 +191,16 @@ async function nameAll() {
   if (naming || !items.length) return;
   naming = true;
   renamedCount = 0;
+  lastCost = null;  // the last batch's cost would read as this one's
   els.undo.hidden = true;  // undoing now would rename files the job is reading
-  els.name.disabled = els.rename.disabled = true;
   els.progress.hidden = false;
   els.progress.className = "busy";
   els.progress.firstElementChild.style.width = "0";
   inputs().forEach((i) => (i.closest(".card").className = "card pending", i.disabled = true));
+  updateButtons();  // step 2 lights up and the guide says what is happening
   try {
     const { job } = await api("name", {
-      paths: items.map((i) => i.path), profile, context: els.context.value.trim(), keep_order: els.order.checked,
+      paths: items.map((i) => i.path), profile, context: els.context.value.trim(),
     });
     let r;
     do {
@@ -157,15 +208,19 @@ async function nameAll() {
       r = await api("name/" + job);
       els.progress.firstElementChild.style.width = (r.total ? (r.progress / r.total) * 90 : 0) + "%";
     } while (!r.done);
+    if (r.cost) lastCost = r.cost;  // a failed batch can still have cost something
     if (r.error) throw new Error(r.error);
     let errors = 0, missing = 0, why = null;
     for (const it of items) {
-      const res = r.results[it.path], inp = els.grid.querySelector(`[data-id="${it.id}"] input`);
+      const res = r.results[it.path], inp = els.grid.querySelector(`[data-id="${it.id}"] .name`);
       inp.closest(".card").className = "card" + (res && !res.error ? "" : " error");
       if (!res) { missing++; inp.title = "This file was not there when naming ran. Load the folder again."; continue; }
       if (res.error) { errors++; inp.title = res.error; why = why || res.error; }
-      if (res.proposed) { inp.value = res.proposed; updateChanged(inp, it); }
+      it.named = true;
+      if (res.proposed) inp.value = res.proposed;
+      updateChanged(inp, it, false);
     }
+    fitAll();
     els.progress.firstElementChild.style.width = "100%";
     lastCost = r.cost || 0;
     const bad = errors + missing;
@@ -176,7 +231,8 @@ async function nameAll() {
     inputs()[0] && inputs()[0].focus();
   } catch (e) {
     toast(e.message, { error: true });
-    inputs().forEach((i, n) => { i.closest(".card").className = "card"; updateChanged(i, items[n]); });
+    inputs().forEach((i) => (i.closest(".card").className = "card"));
+    refreshCards();
   } finally {
     naming = false;
     els.progress.className = "";
@@ -195,7 +251,7 @@ const follow = (moved) => {
 async function renameAll() {
   if (naming) return;
   const inp = inputs();
-  const changed = items.map((it, i) => ({ path: it.path, new_name: inp[i].value.trim() }))
+  const changed = items.map((it, i) => ({ path: it.path, new_name: finalName(it, inp[i]) }))
     .filter((x, i) => x.new_name && x.new_name !== stem(items[i].name));
   if (!changed.length) return;
   try {
@@ -319,6 +375,13 @@ els.pick.onclick = els.pickEmpty.onclick = async () => {
 // silently swallowed all typing and Cmd/Ctrl+V.
 els.folder.onkeydown = (e) => { if (e.key === "Enter") load([els.folder.value.trim()]); };
 els.folder.onchange = () => { if (els.folder.value.trim()) load([els.folder.value.trim()]); };
+els.context.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing && !els.name.disabled) nameAll(); };
+els.order.onchange = () => {  // numbers come and go at once, no need to name again
+  refreshCards();
+  api("settings", { keep_order: els.order.checked }).catch((e) => toast(e.message, { error: true }));
+};
+let fitting = 0;
+window.addEventListener("resize", () => { cancelAnimationFrame(fitting); fitting = requestAnimationFrame(fitAll); });
 els.name.onclick = nameAll;
 els.rename.onclick = renameAll;
 els.clear.onclick = clearAll;

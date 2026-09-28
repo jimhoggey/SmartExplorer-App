@@ -219,13 +219,6 @@ def test_clean():
     assert namer.clean("Giving - ") == "Giving"
 
 
-def test_number_restarts_per_folder():
-    items = [{"path": "/a/1.png"}, {"path": "/a/2.png"}, {"path": "/b/1.png"}]
-    assert namer.number(items, ["X", "Y", "Z"]) == ["01 X", "02 Y", "01 Z"]
-    many = [{"path": "/a/%d.png" % i} for i in range(120)]
-    assert namer.number(many, ["X"] * 120)[0] == "001 X"
-
-
 def fake_chat(fail_naming=False, calls=None):
     def chat(key, model, messages, **kw):
         content = messages[1]["content"]
@@ -324,12 +317,6 @@ def test_run(monkeypatch):
     assert out["cost"] == pytest.approx(0.011)  # one vision request for the two readable files, one naming request
 
 
-def test_run_keep_order_numbers_every_file(monkeypatch):
-    monkeypatch.setattr(namer, "chat", fake_chat())
-    out = namer.run("k", "m", ITEMS, lambda i: ENC, keep_order=True)
-    assert [r["proposed"] for r in out["results"]] == ["01 Name 0", "02 Name 1", "03 Name 2"]
-
-
 def test_run_passes_facts_to_naming(monkeypatch):
     seen = []
     chat = fake_chat()
@@ -352,7 +339,6 @@ def test_mock_run():
     assert out == {"results": [{"id": 7, "path": "/x/a.png", "proposed": "Slide 1"},
                                {"id": 8, "path": "/x/b.png", "proposed": "Slide 2"}], "cost": 0.0}
     assert len(calls) == 2
-    assert [r["proposed"] for r in namer.mock_run(items, keep_order=True)["results"]] == ["01 Slide 1", "02 Slide 2"]
 
 
 def test_check_key(monkeypatch):
