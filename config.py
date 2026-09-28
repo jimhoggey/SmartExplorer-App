@@ -14,7 +14,8 @@ MODELS = [
      "note": "Cheapest, well under a tenth of a cent a file. For big batches of simple files."},
 ]
 DEFAULT_MODEL = MODELS[0]["id"]
-# Shut down or superseded; a saved choice of one of these falls back to the default.
+# Being retired by Google (published shutdown dates have moved around October 2026);
+# a saved choice of one of these falls back to the default.
 RETIRED = {"google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"}
 
 

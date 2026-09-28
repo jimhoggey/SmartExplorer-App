@@ -37,7 +37,7 @@ def test_scan_mixes_folders_and_files_once_each(tmp_path):
 def test_config_model_falls_back_from_retired(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_DIR", tmp_path / "cfg")
     assert config.model() == config.DEFAULT_MODEL
-    config.save(model="google/gemini-2.5-flash")  # shuts down 16 Oct 2026
+    config.save(model="google/gemini-2.5-flash")  # being retired by Google
     assert config.model() == config.DEFAULT_MODEL
     config.save(model="someone/custom-model")
     assert config.model() == "someone/custom-model"
