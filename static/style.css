@@ -241,12 +241,6 @@ dialog label input, dialog label select {
   font: 13px/1 var(--ui); color: var(--ink); background: var(--bg); border-color: var(--line-2);
 }
 dialog label input { font-family: var(--mono); font-size: 12px; }
-dialog textarea {
-  display: block; width: 100%; margin-top: 8px; resize: vertical; min-height: 96px;
-  font: 13px/1.45 var(--ui); letter-spacing: normal; text-transform: none;
-  color: var(--ink); background: var(--bg); border-color: var(--line-2);
-}
-dialog textarea:focus { border-color: var(--sig); }
 dialog small {
   display: block; margin-top: 7px; min-height: 15px;
   font: 12px/1.35 var(--ui); letter-spacing: normal; text-transform: none; color: var(--mute);

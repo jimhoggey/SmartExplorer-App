@@ -116,16 +116,11 @@ def parse_json(text):
     raise NamerError("Model reply was not JSON: %s" % text[:100])
 
 
-def _extras(rules, context):
-    out = ""
-    if rules.strip():
-        out += "\n\nHouse rules (these override the convention):\n" + rules.strip()
-    if context.strip():
-        out += "\n\nContext for this batch from the user:\n" + context.strip()
-    return out
+def _extras(context):
+    return "\n\nContext for this batch from the user:\n" + context.strip() if context.strip() else ""
 
 
-def read_prompt(profile, rules="", context=""):
+def read_prompt(profile, context=""):
     p = conventions.get(profile)
     return """%s
 
@@ -138,29 +133,29 @@ Keep replies short, because every word the model writes costs more than a word i
 - text: the readable words, at most about 40. For documents, only the title, organisation, reference numbers, dates and totals.
 - visual: at most 8 words. notes: at most 15 words, or empty.
 Reply with JSON only: {"files": [{"n": <file number>, "category": "", "subject": "", "text": "", "visual": "", "date": "", "notes": ""}]}, one entry per file, in order.""" % (
-        READ_ROLE, p["reader"], p["categories"], _extras(rules, context))
+        READ_ROLE, p["reader"], p["categories"], _extras(context))
 
 
-def name_prompt(profile, rules="", context=""):
+def name_prompt(profile, context=""):
     p = conventions.get(profile)
     return """%s
 
 %s%s
 
 How to work:
-- Base each name on what the file actually shows. Use the facts, context and house rules to fill gaps (series name, event, date, video length), never to invent content.
+- Base each name on what the file actually shows. Use the facts and context to fill gaps (series name, event, date, video length), never to invent content.
 - Name the batch as a set: files of the same kind should read alike. Where files would otherwise get the same name, tell them apart by what actually differs between them, in their own words where possible.
 - Every name must be different from every other name in the batch. already_used lists names that are taken: other files already in the same folders, and names given earlier in this batch. Never reuse one; if a file would get one, add a Detail from its own words to tell it apart.
 - If a file's original name already follows the convention and matches its content, keep it.
 - Reply with JSON only: {"names": [{"i": <the file's i>, "name": "<name without extension>"}]}, one entry per file.""" % (
-        NAME_ROLE, p["rules"], _extras(rules, context))
+        NAME_ROLE, p["rules"], _extras(context))
 
 
 def _facts(item, encoded):
     return {"file": item["name"], "folder": Path(item["path"]).parent.name, "kind": item["kind"], **encoded.get("facts", {})}
 
 
-def read_batch(key, model, items, encoded, profile=conventions.DEFAULT_PROFILE, rules="", context=""):
+def read_batch(key, model, items, encoded, profile=conventions.DEFAULT_PROFILE, context=""):
     """Describe several files in one request. Returns (descriptions in item order, cost).
     Each description carries its file's facts. Raises NamerError unless every file is described."""
     content = []
@@ -173,7 +168,7 @@ def read_batch(key, model, items, encoded, profile=conventions.DEFAULT_PROFILE, 
         if enc.get("text"):
             content.append({"type": "text", "text": "Text layer of its first page:\n" + enc["text"]})
     content.append({"type": "text", "text": "Describe each of the %d files." % len(items)})
-    text, cost = chat(key, model, [{"role": "system", "content": read_prompt(profile, rules, context)},
+    text, cost = chat(key, model, [{"role": "system", "content": read_prompt(profile, context)},
                                    {"role": "user", "content": content}],
                       schema=READ_SCHEMA, effort=READ_EFFORT, max_tokens=1500 + 500 * len(items), timeout=180)
     try:
@@ -200,10 +195,10 @@ def read_batch(key, model, items, encoded, profile=conventions.DEFAULT_PROFILE, 
             for n, (item, enc) in enumerate(zip(items, encoded), 1)], cost
 
 
-def describe(key, model, item, encoded, profile=conventions.DEFAULT_PROFILE, rules="", context=""):
+def describe(key, model, item, encoded, profile=conventions.DEFAULT_PROFILE, context=""):
     """One file on its own. Returns (description, cost); a failure is {"error": ...}."""
     try:
-        descs, cost = read_batch(key, model, [item], [encoded], profile, rules, context)
+        descs, cost = read_batch(key, model, [item], [encoded], profile, context)
         return descs[0], cost
     except Exception as e:
         return {"error": str(e)}, getattr(e, "cost", 0.0)
@@ -275,12 +270,12 @@ def _name_chunk(key, model, descs, used, prompt):
     return got, cost
 
 
-def name_all(key, model, descs, profile=conventions.DEFAULT_PROFILE, rules="", context="", existing=()):
+def name_all(key, model, descs, profile=conventions.DEFAULT_PROFILE, context="", existing=()):
     """Return (names, error, cost). On failure names fall back to the file's own
     words and error explains why. The caller MUST surface it, or the batch looks fine.
     existing: names of other files already in the same folders, which new names must avoid."""
     err, names, cost = None, [], 0.0
-    prompt = name_prompt(profile, rules, context)
+    prompt = name_prompt(profile, context)
     try:
         for start in range(0, len(descs), CHUNK):
             got, c = _name_chunk(key, model, descs[start:start + CHUNK], list(existing) + [clean(n) for n in names], prompt)
@@ -307,12 +302,12 @@ def number(items, names):
     return out
 
 
-def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, rules="", context="",
+def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, context="",
         keep_order=False, existing=()):
     """Name every item. Returns {"results": [{id, path, proposed, error?}], "cost": USD}.
     existing: names already taken by other files in the same folders."""
     notify = on_progress or (lambda *a: None)
-    opts = (profile, rules, context)
+    opts = (profile, context)
 
     def read(batch):
         descs, cost, ready, enc = {}, 0.0, [], []

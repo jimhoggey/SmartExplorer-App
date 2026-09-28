@@ -7,8 +7,8 @@ This is the file to edit to change how files get named. Each profile has:
   rules       the convention the naming step applies to the whole batch (stage 2);
               {categories} is replaced with the list above
 
-Per-church vocabulary does not belong here: put it in Settings > House rules,
-which is sent with every batch and overrides these rules.
+To change how your church's files are named for good (say, Offering instead of
+Giving), edit the rules below. For one batch only, type it in the app's context box.
 """
 
 DEFAULT_PROFILE = "propresenter"
@@ -16,7 +16,7 @@ DEFAULT_PROFILE = "propresenter"
 PROFILES = {
     "propresenter": {
         "label": "ProPresenter",
-        "categories": "Welcome (welcome, pre-service and holding slides) · Countdown (countdown timers and videos) · Announcement (events, notices, registrations, promos) · Giving (offering, tithes, bank details, give online) · Sermon (series art, sermon title, points, quotes, questions) · Scripture (Bible verses that are not part of a sermon set) · Worship (song lyrics or song title slides; Subject is the song title) · Prayer · Communion · Baptism · Connect (new here, next steps, connect cards, sign-up QR codes) · Kids · Youth · Background (stills and motion loops with no meaningful text; Subject describes the look) · Lower Third (name and title straps, usually on a transparent background) · Bumper (intro, outro and transition videos) · Social (socials, follow us) · Other",
+        "categories": "Welcome (welcome and pre-service slides) · Closing (end of service: thanks for coming, see you next week, have a great week) · Countdown (countdown timers and videos) · Announcement (events, notices, registrations, promos) · Giving (offering, tithes, bank details, give online) · Sermon (series art, sermon title, points, quotes, questions) · Scripture (Bible verses that are not part of a sermon set) · Worship (song lyrics or song title slides; Subject is the song title) · Prayer · Communion · Baptism · Connect (new here, next steps, connect cards, sign-up QR codes) · Kids · Youth · Background (stills and motion loops with no meaningful text; Subject describes the look) · Lower Third (name and title straps, usually on a transparent background) · Bumper (intro, outro and transition videos) · Social (socials, follow us) · Other",
         "reader": """These files are slides, graphics and videos for church services, run in ProPresenter.
 - Read every piece of text exactly as written. Do not correct, complete or invent text.
 - Song lyrics: if you recognise the song, put its title in notes. If you are not sure, say so.
@@ -29,7 +29,7 @@ PROFILES = {
 
 Format: Category - Subject - Detail
 - Category: exactly one from the list below. It always comes first, so files group together and a search for "Giving" finds every giving slide.
-- Subject: the specific thing: event name, sermon series and week, song title, Bible reference. Leave it out when the category already says it all (Giving, Welcome).
+- Subject: the specific thing: event name, sermon series and week, song title, Bible reference, or the slide's own short heading (Closing - Thanks For Coming). Leave it out only when it would just repeat the category (Giving, not Giving - Giving).
 - Detail: only for files that would otherwise share a name with another file in this batch. A file with no look-alike gets no Detail: the only giving slide is just Giving.
 
 Telling look-alikes apart:
@@ -64,6 +64,7 @@ Sermon - Anchored Wk 3 - Hebrews 6.19
 Sermon - Anchored Wk 3 - Point 1 Hope Holds
 Worship - Amazing Grace - Verse 1
 Connect - New Here
+Closing - Thanks For Coming
 Background - Purple Particles Loop""",
     },
     "general": {

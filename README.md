@@ -46,7 +46,7 @@ To choose on evidence rather than benchmarks, run the same folder through severa
 3. Tick **Keep order** when the files are a deck that must stay in sequence: names get `01 `, `02 `… in the original order.
 4. **Name with AI**, edit any name inline, then **Rename all**. **Undo** reverts the last batch.
 
-Put vocabulary that applies every week ("We say Offering, not Giving") in *Settings → House rules*. The full naming convention, with examples, is in [docs/naming-convention.md](docs/naming-convention.md).
+The full naming convention, with examples, is in [docs/naming-convention.md](docs/naming-convention.md); to change it for good (say, Offering instead of Giving), edit `conventions.py`.
 
 Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)` on collisions. Existing files are never overwritten. Undo journals live in `~/.smart-explorer/journal/`.
 

@@ -21,7 +21,6 @@ JOBS, LOCK = {}, threading.Lock()
 def status():
     c = config.load()
     return {"has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
-            "rules": c.get("rules", ""),
             "profiles": [{"id": k, "label": v["label"]} for k, v in conventions.PROFILES.items()],
             # the naming options last used, so the next launch starts the same way
             "profile": c.get("profile") if c.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE,
@@ -55,7 +54,7 @@ def api_status():
 
 @app.post("/api/settings")
 def api_settings():
-    config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model", "rules") and isinstance(v, str)})
+    config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model") and isinstance(v, str)})
     return jsonify(status())
 
 
@@ -87,7 +86,7 @@ def api_name():
     profile = body.get("profile") if body.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE
     config.save(profile=profile, keep_order=bool(body.get("keep_order")))
     opts = {"profile": profile, "context": str(body.get("context") or "")[:2000],
-            "rules": config.load().get("rules", "")[:4000], "keep_order": bool(body.get("keep_order"))}
+            "keep_order": bool(body.get("keep_order"))}
     items = scanner.scan(*paths)
     opts["existing"] = scanner.siblings(items)
     jid = uuid.uuid4().hex

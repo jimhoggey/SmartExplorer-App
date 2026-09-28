@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const els = ["gear", "pick", "folder", "name", "rename", "progress", "empty", "grid", "toast", "undo", "stat", "drop",
-  "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "rules", "keymsg", "test", "cancel",
+  "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "keymsg", "test", "cancel",
   "save"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
@@ -212,7 +212,6 @@ function fillSettings() {
   els.model.value = known ? status.model : "";
   els.custom.hidden = known;
   els.custom.value = known ? "" : status.model;
-  els.rules.value = status.rules || "";
   els.key.value = "";
   els.key.placeholder = status.has_key ? "•••••••• (saved, leave blank to keep)" : "sk-or-…";
   els.keymsg.textContent = "";
@@ -221,7 +220,7 @@ function fillSettings() {
 }
 
 async function saveSettings() {
-  const body = { model: els.model.value || els.custom.value.trim() || status.model, rules: els.rules.value.trim() };
+  const body = { model: els.model.value || els.custom.value.trim() || status.model };
   if (els.key.value.trim()) body.key = els.key.value.trim();
   status = await api("settings", body);
   fillSettings();

@@ -81,16 +81,22 @@ def test_chat_empty_reply_is_an_error(monkeypatch):
         namer.chat("k", "m", [])
 
 
-def test_prompts_carry_convention_rules_and_context():
-    r = namer.read_prompt("propresenter", rules="We say Offering", context="Sun 12 Oct")
+def test_prompts_carry_convention_and_context():
+    r = namer.read_prompt("propresenter", context="Sun 12 Oct")
     p = conventions.get("propresenter")
     assert p["reader"] in r and p["categories"] in r
     assert p["rules"] not in r  # the style rules are the namer's job; the reader stays lean
     assert p["rules"] in namer.name_prompt("propresenter")
-    assert "House rules (these override the convention):\nWe say Offering" in r
     assert "Context for this batch from the user:\nSun 12 Oct" in r
     n = namer.name_prompt("general")
-    assert conventions.get("general")["rules"] in n and "House rules" not in n and "Context for" not in n
+    assert conventions.get("general")["rules"] in n and "Context for" not in n and "house rules" not in n.lower()
+
+
+def test_closing_slides_have_their_own_category():
+    """A thanks-for-coming screen was named Welcome - Thanks For Coming, because
+    Welcome also covered holding slides."""
+    cats = conventions.get("propresenter")["categories"]
+    assert "Closing (end of service: thanks for coming" in cats and "holding" not in cats
     assert namer.name_prompt("nonsense") == namer.name_prompt(conventions.DEFAULT_PROFILE)
 
 
