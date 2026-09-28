@@ -81,16 +81,22 @@ def test_chat_empty_reply_is_an_error(monkeypatch):
         namer.chat("k", "m", [])
 
 
-def test_prompts_carry_convention_rules_and_context():
-    r = namer.read_prompt("propresenter", rules="We say Offering", context="Sun 12 Oct")
+def test_prompts_carry_convention_and_context():
+    r = namer.read_prompt("propresenter", context="Sun 12 Oct")
     p = conventions.get("propresenter")
     assert p["reader"] in r and p["categories"] in r
     assert p["rules"] not in r  # the style rules are the namer's job; the reader stays lean
     assert p["rules"] in namer.name_prompt("propresenter")
-    assert "House rules (these override the convention):\nWe say Offering" in r
     assert "Context for this batch from the user:\nSun 12 Oct" in r
     n = namer.name_prompt("general")
-    assert conventions.get("general")["rules"] in n and "House rules" not in n and "Context for" not in n
+    assert conventions.get("general")["rules"] in n and "Context for" not in n and "house rules" not in n.lower()
+
+
+def test_closing_slides_have_their_own_category():
+    """A thanks-for-coming screen was named Welcome - Thanks For Coming, because
+    Welcome also covered holding slides."""
+    cats = conventions.get("propresenter")["categories"]
+    assert "Closing (end of service: thanks for coming" in cats and "holding" not in cats
     assert namer.name_prompt("nonsense") == namer.name_prompt(conventions.DEFAULT_PROFILE)
 
 
@@ -213,13 +219,6 @@ def test_clean():
     assert namer.clean("Giving - ") == "Giving"
 
 
-def test_number_restarts_per_folder():
-    items = [{"path": "/a/1.png"}, {"path": "/a/2.png"}, {"path": "/b/1.png"}]
-    assert namer.number(items, ["X", "Y", "Z"]) == ["01 X", "02 Y", "01 Z"]
-    many = [{"path": "/a/%d.png" % i} for i in range(120)]
-    assert namer.number(many, ["X"] * 120)[0] == "001 X"
-
-
 def fake_chat(fail_naming=False, calls=None):
     def chat(key, model, messages, **kw):
         content = messages[1]["content"]
@@ -318,12 +317,6 @@ def test_run(monkeypatch):
     assert out["cost"] == pytest.approx(0.011)  # one vision request for the two readable files, one naming request
 
 
-def test_run_keep_order_numbers_every_file(monkeypatch):
-    monkeypatch.setattr(namer, "chat", fake_chat())
-    out = namer.run("k", "m", ITEMS, lambda i: ENC, keep_order=True)
-    assert [r["proposed"] for r in out["results"]] == ["01 Name 0", "02 Name 1", "03 Name 2"]
-
-
 def test_run_passes_facts_to_naming(monkeypatch):
     seen = []
     chat = fake_chat()
@@ -346,7 +339,6 @@ def test_mock_run():
     assert out == {"results": [{"id": 7, "path": "/x/a.png", "proposed": "Slide 1"},
                                {"id": 8, "path": "/x/b.png", "proposed": "Slide 2"}], "cost": 0.0}
     assert len(calls) == 2
-    assert [r["proposed"] for r in namer.mock_run(items, keep_order=True)["results"]] == ["01 Slide 1", "02 Slide 2"]
 
 
 def test_check_key(monkeypatch):
@@ -354,3 +346,80 @@ def test_check_key(monkeypatch):
     assert namer.check_key("k") == {"ok": True, "label": "sk-1"}
     monkeypatch.setattr(namer, "urlopen", raise_(URLError("down")))
     assert namer.check_key("k")["ok"] is False
+
+
+def test_name_all_keeps_cost_when_reply_is_not_json(monkeypatch):
+    stub(monkeypatch, "Sorry, I can't help with that.", cost=0.05)
+    names, err, cost = namer.name_all("k", "m", DESCS)
+    assert err and cost == 0.05
+
+
+def test_name_all_duplicate_entry_does_not_discard_names(monkeypatch):
+    stub(monkeypatch, json.dumps({"names": [{"i": 0, "name": "A"}, {"i": 0, "name": "A again"},
+                                            {"i": 1, "name": "B"}, {"i": 2, "name": "C"}]}))
+    assert namer.name_all("k", "m", DESCS)[:2] == (["A", "B", "C"], None)
+
+
+def test_name_all_prefers_the_names_key(monkeypatch):
+    stub(monkeypatch, json.dumps({"notes": ["x", "y", "z"], "names": [{"i": 0, "name": "A"}, {"i": 1, "name": "B"}, {"i": 2, "name": "C"}]}))
+    assert namer.name_all("k", "m", DESCS)[0] == ["A", "B", "C"]
+
+
+def test_name_all_avoids_names_already_in_the_folder(monkeypatch):
+    seen = []
+    stub(monkeypatch, '["Giving", "Giving - Love Offering", "Welcome"]', seen)
+    names, err, _ = namer.name_all("k", "m", DESCS, existing=["Giving", "Background"])
+    assert json.loads(json.loads(seen[0].data)["messages"][1]["content"])["already_used"] == ["Giving", "Background"]
+    assert names == ["Giving (2)", "Giving - Love Offering", "Welcome"]  # a clash the model missed shows before renaming
+
+
+def test_read_batch_rejects_extra_descriptions(monkeypatch):
+    """Three entries for two files (say, a video's frames described separately)
+    means the numbering can't be trusted, so the batch is retried file by file."""
+    stub(monkeypatch, json.dumps({"files": [dict(DESC, n=1), dict(DESC, n=2), dict(DESC, n=3)]}))
+    with pytest.raises(namer.NamerError, match="3 descriptions for 2 files"):
+        namer.read_batch("k", "m", [ITEM, ITEM], [ENC, ENC])
+
+
+def test_run_model_keys_cannot_override_the_apps(monkeypatch):
+    seen = []
+
+    def chat(key, model, messages, **kw):
+        content = messages[1]["content"]
+        if isinstance(content, list):
+            return json.dumps({"files": [dict(DESC, n=n, i=99, original=["x"]) for n in range(1, files_in(content) + 1)]}), 0.0
+        files = json.loads(content)["files"]
+        seen.append(files)
+        return json.dumps({"names": [{"i": f["i"], "name": "Name %d" % f["i"]} for f in files]}), 0.0
+
+    monkeypatch.setattr(namer, "chat", chat)
+    out = namer.run("k", "m", ITEMS, lambda i: ENC)
+    assert [f["i"] for f in seen[0]] == [0, 1, 2] and seen[0][0]["original"] == "0.png"
+    assert [r["proposed"] for r in out["results"]] == ["Name 0", "Name 1", "Name 2"]
+
+
+def test_run_passes_existing_names_to_naming(monkeypatch):
+    seen = []
+    chat = fake_chat()
+
+    def spy(key, model, messages, **kw):
+        if not isinstance(messages[1]["content"], list):
+            seen.append(json.loads(messages[1]["content"]))
+        return chat(key, model, messages, **kw)
+
+    monkeypatch.setattr(namer, "chat", spy)
+    namer.run("k", "m", ITEMS[:1], lambda i: ENC, existing=["Giving"])
+    assert seen[0]["already_used"] == ["Giving"]
+
+
+def test_check_key_reports_spend_and_limit(monkeypatch):
+    body = b'{"data": {"label": "sk-or-v1-abc", "usage": 1.2345, "limit_remaining": 8.5, "is_free_tier": false}}'
+    monkeypatch.setattr(namer, "urlopen", lambda req, timeout=None: io.BytesIO(body))
+    assert namer.check_key("k") == {"ok": True, "label": "sk-or-v1-abc", "spent": 1.2345, "left": 8.5}
+
+
+def test_chat_asks_openrouter_for_cost(monkeypatch):
+    seen = []
+    stub(monkeypatch, "{}", seen)
+    namer.chat("k", "m", [])
+    assert json.loads(seen[0].data)["usage"] == {"include": True}

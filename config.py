@@ -9,7 +9,7 @@ MODELS = [
     {"id": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5 (recommended)",
      "note": "Most accurate text reading. Around half a cent a file."},
     {"id": "google/gemini-3.8-flash", "label": "Gemini 3.8 Flash",
-     "note": "Faster, around a fifth of a cent a file. Its price doubles on 1 Jan 2027."},
+     "note": "Faster, around a fifth of a cent a file."},
     {"id": "google/gemini-3.1-flash-lite", "label": "Gemini 3.1 Flash Lite",
      "note": "Cheapest, well under a tenth of a cent a file. For big batches of simple files."},
 ]

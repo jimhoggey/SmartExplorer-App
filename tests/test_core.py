@@ -121,3 +121,17 @@ def test_apply_partial_failure_is_journaled(tmp_path):
 
 def test_plan_skips_missing_files(tmp_path):
     assert renamer.plan([{"path": str(tmp_path / "nope.png"), "new_name": "x"}]) == []
+
+
+def test_scan_survives_unicode_digits(tmp_path):
+    for n in ["Room 1²3.png", "Room 2.png"]:
+        (tmp_path / n).write_bytes(b"x")
+    assert [i["name"] for i in scanner.scan(str(tmp_path))] == ["Room 1²3.png", "Room 2.png"]
+
+
+def test_siblings_lists_other_files_in_the_batch_folders(tmp_path):
+    for n in ["1.png", "2.png", "Giving.png", "Giving.pdf", "notes.txt", ".DS_Store"]:
+        (tmp_path / n).write_bytes(b"x")
+    (tmp_path / "sub").mkdir()
+    batch = [i for i in scanner.scan(str(tmp_path)) if i["name"] in ("1.png", "2.png")]
+    assert scanner.siblings(batch) == ["Giving", "notes"]

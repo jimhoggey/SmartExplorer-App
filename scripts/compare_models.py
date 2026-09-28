@@ -5,7 +5,7 @@
     python scripts/compare_models.py FOLDER --models anthropic/claude-sonnet-5,google/gemini-3.8-flash
 
 Nothing is renamed. It makes paid OpenRouter calls (it asks first), using the key
-saved in the app or OPENROUTER_API_KEY, plus the house rules saved in the app.
+saved in the app or OPENROUTER_API_KEY.
 Writes model-comparison.html with a thumbnail and each model's name per file.
 """
 import argparse
@@ -44,7 +44,6 @@ def main():
     if not items:
         sys.exit("No supported files found.")
     models = [m.strip() for m in a.models.split(",") if m.strip()]
-    rules = config.load().get("rules", "")
     print("%d files x %d models, profile %s. This makes paid OpenRouter calls." % (len(items), len(models), a.profile))
     if not a.yes and input("Continue? [y/N] ").strip().lower() != "y":
         return
@@ -61,7 +60,7 @@ def main():
         print("  %s ..." % m, end="", flush=True)
         t = time.time()
         try:
-            out = namer.run(key, m, items, encode, profile=a.profile, rules=rules, context=a.context)
+            out = namer.run(key, m, items, encode, profile=a.profile, context=a.context)
             runs.append({"model": m, "secs": time.time() - t, "cost": out["cost"], "by_path": {r["path"]: r for r in out["results"]}})
             print(" %.0fs, $%.3f" % (runs[-1]["secs"], out["cost"]))
         except Exception as e:  # keep going: one bad model id should not sink the comparison

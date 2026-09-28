@@ -30,10 +30,13 @@ def test_status_and_settings(client):
     assert s["has_key"] is False and s["model"] == config.DEFAULT_MODEL
     assert s["models"][0]["id"] == config.DEFAULT_MODEL and s["models"][0]["note"]
     assert [p["id"] for p in s["profiles"]] == ["propresenter", "general"]
-    assert s["profile"] == "propresenter" and s["keep_order"] is False and s["rules"] == ""
+    assert s["profile"] == "propresenter" and "rules" not in s
+    assert "keep_order" not in s  # decided per batch in the window, never carried over
+    assert s["spent_month"] == 0 and s["spent_total"] == 0
+    assert s["version"] and s["version"].count(".") == 2
     s = client.post("/api/settings", json={"key": "sk", "model": "m", "rules": "We say Offering", "bogus": "x"}).get_json()
-    assert s["has_key"] is True and s["model"] == "m" and s["rules"] == "We say Offering"
-    assert "bogus" not in config.load()
+    assert s["has_key"] is True and s["model"] == "m"
+    assert "bogus" not in config.load() and "rules" not in config.load()  # house rules were removed
 
 
 def test_index(client):
@@ -42,7 +45,8 @@ def test_index(client):
 
 
 def test_scan(client, folder):
-    assert client.post("/api/scan", json={"folder": str(folder / "nope")}).status_code == 400
+    r = client.post("/api/scan", json={"folder": str(folder / "nope")})
+    assert r.status_code == 400 and "Choose folder" in r.get_json()["error"]
     assert client.post("/api/scan", json={"folder": "."}).status_code == 400
     assert client.post("/api/scan", json={"paths": ["relative.png", 7]}).status_code == 400
     items = client.post("/api/scan", json={"folder": str(folder)}).get_json()["items"]
@@ -97,15 +101,30 @@ def test_results_keyed_by_path_survive_a_file_landing_mid_flight(client, folder)
 
 
 def test_name_explicit_paths_with_options(client, folder):
-    job = client.post("/api/name", json={"paths": [str(folder / "b.png")], "profile": "general", "keep_order": True}).get_json()["job"]
+    job = client.post("/api/name", json={"paths": [str(folder / "b.png")], "profile": "general"}).get_json()["job"]
     for _ in range(100):
         r = client.get("/api/name/" + job).get_json()
         if r["done"]:
             break
         time.sleep(0.05)
-    assert r["results"] == {str(folder / "b.png"): {"proposed": "01 Slide 1", "error": None}}
+    # Keep order's 01, 02… are added in the window (outside the editable name), not here.
+    assert r["results"] == {str(folder / "b.png"): {"proposed": "Slide 1", "error": None}}
+    assert client.get("/api/status").get_json()["profile"] == "general"  # remembered for next launch
+
+
+def test_spend_adds_up_per_month(client, folder, monkeypatch):
+    """Each batch's cost is kept, so Settings can say what naming has cost this month and in all."""
+    import app
+    import namer
+    monkeypatch.setattr(namer, "mock_run", lambda items, *a, **k: {
+        "results": [{"id": i["id"], "path": i["path"], "proposed": "X"} for i in items], "cost": 0.0125})
+    config.save(spend={"2026-01": 1.5, "bad": "x"})
+    _name(client, folder)
+    _name(client, folder)
     s = client.get("/api/status").get_json()
-    assert s["profile"] == "general" and s["keep_order"] is True  # remembered for next launch
+    assert s["spent_month"] == pytest.approx(0.025) and s["spent_total"] == pytest.approx(1.525)
+    app.record_spend(0)  # a batch that cost nothing leaves the file alone
+    assert config.load()["spend"][time.strftime("%Y-%m")] == pytest.approx(0.025)
 
 
 def test_name_unknown_profile_falls_back(client, folder):
@@ -121,3 +140,23 @@ def test_name_requires_key(client, folder, monkeypatch):
 
 def test_pick_folder_without_window(client):
     assert client.get("/api/pick-folder").get_json() == {"folder": None}
+
+
+def test_name_tells_the_namer_what_is_already_in_the_folder(client, folder, monkeypatch):
+    import namer
+    seen = {}
+
+    def run(key, model, items, encode, on_progress=None, **opts):
+        seen.update(opts, names=[i["name"] for i in items])
+        return {"results": [{"id": i["id"], "path": i["path"], "proposed": "X"} for i in items], "cost": 0.0}
+
+    monkeypatch.setattr(namer, "run", run)
+    config.save(key="sk-or-test")
+    (folder / "Giving.png").write_bytes((folder / "a.jpg").read_bytes())
+    job = client.post("/api/name", json={"paths": [str(folder / "b.png")]}).get_json()["job"]
+    for _ in range(100):
+        if client.get("/api/name/" + job).get_json()["done"]:
+            break
+        time.sleep(0.05)
+    assert seen["names"] == ["b.png"]
+    assert seen["existing"] == ["a", "Giving", "notes"]

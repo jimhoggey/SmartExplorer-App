@@ -139,3 +139,52 @@ def test_transparent_png_keeps_dark_text_visible(tmp_path):
     solid = tmp_path / "solid.png"
     Image.new("RGBA", (40, 20), (9, 9, 9, 255)).save(solid)
     assert "transparent" not in prep.encode({"path": str(solid), "kind": "image"})["facts"]
+
+
+def test_16bit_grey_png_is_not_white(tmp_path):
+    p = tmp_path / "grey16.png"
+    Image.new("I;16", (40, 20), 32768).save(p)  # 50% grey in 16 bits
+    seen = _decode(prep.encode({"path": str(p), "kind": "image"})["images"][0]).convert("L")
+    assert 100 < seen.getpixel((10, 10)) < 160
+
+
+def test_colour_key_transparency_gets_grey(tmp_path):
+    p = tmp_path / "keyed.png"
+    img = Image.new("RGB", (40, 20), (0, 0, 0))
+    img.paste((255, 255, 255), (0, 0, 20, 20))
+    img.save(p, transparency=(0, 0, 0))  # black means transparent
+    e = prep.encode({"path": str(p), "kind": "image"})
+    seen = _decode(e["images"][0]).convert("L")
+    assert 100 < seen.getpixel((30, 10)) < 160 and seen.getpixel((5, 10)) > 240
+    assert e["facts"]["transparent"].startswith("yes")
+
+
+def test_short_video_with_long_audio_uses_last_frame(monkeypatch):
+    """ffmpeg reports the container's duration, which a long audio track can
+    stretch far past the last video frame."""
+    def frames(path):
+        yield {"size": (8, 8), "fps": 10.0, "duration": 60.0}
+        for i in range(5):  # half a second of video
+            yield bytes([i * 40]) * (8 * 8 * 3)
+
+    monkeypatch.setattr(prep.imageio_ffmpeg, "read_frames", frames)
+    assert len(prep.video_frames_b64("clip.mp4")) == 1
+
+
+def test_many_pdfs_in_parallel_do_not_crash(tmp_path):
+    """PDFium is not thread-safe; without the lock this segfaults the process,
+    so it runs in a subprocess to fail cleanly instead of killing pytest."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    for i in range(12):
+        write_pdf(tmp_path / ("d%02d.pdf" % i), ["Doc %d" % i])
+    code = (
+        "import sys; from concurrent.futures import ThreadPoolExecutor; from pathlib import Path\n"
+        "sys.path.insert(0, %r); import prep\n"
+        "files = sorted(Path(%r).glob('*.pdf')) * 4\n"
+        "with ThreadPoolExecutor(8) as ex:\n"
+        "    assert all(ex.map(lambda p: prep.thumb_b64(str(p), 'pdf'), files))\n"
+    ) % (str(Path(prep.__file__).parent), str(tmp_path))
+    assert subprocess.run([sys.executable, "-c", code], timeout=120).returncode == 0

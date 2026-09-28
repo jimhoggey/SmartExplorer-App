@@ -1,0 +1,47 @@
+; Windows installer for Smart Explorer, built by CI with:
+;   iscc /DAppVersion=0.2.0 packaging\windows-installer.iss
+; Installs for the current user (no administrator needed, which suits church
+; computers), adds a Start menu entry, an optional desktop icon and an uninstaller.
+
+#define AppName "Smart Explorer"
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
+
+[Setup]
+; Never change AppId: it is how Windows recognises an upgrade of the same app.
+AppId={{79F49D73-4336-4323-A5E9-CC357B1AE8DC}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+AppPublisher=jimhoggey
+AppPublisherURL=https://github.com/jimhoggey/SmartExplorer-App
+DefaultDirName={autopf}\{#AppName}
+DefaultGroupName={#AppName}
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+OutputDir=..\dist
+OutputBaseFilename=SmartExplorer-{#AppVersion}-windows-setup
+SetupIconFile=..\assets\icon.ico
+UninstallDisplayIcon={app}\{#AppName}.exe
+UninstallDisplayName={#AppName}
+WizardStyle=modern
+Compression=lzma2
+SolidCompression=yes
+CloseApplications=yes
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+[Files]
+Source: "..\dist\{#AppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppName}.exe"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\{#AppName}.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

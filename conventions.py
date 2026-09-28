@@ -7,8 +7,8 @@ This is the file to edit to change how files get named. Each profile has:
   rules       the convention the naming step applies to the whole batch (stage 2);
               {categories} is replaced with the list above
 
-Per-church vocabulary does not belong here: put it in Settings > House rules,
-which is sent with every batch and overrides these rules.
+To change how your church's files are named for good (say, Offering instead of
+Giving), edit the rules below. For one batch only, type it in the app's context box.
 """
 
 DEFAULT_PROFILE = "propresenter"
@@ -16,11 +16,12 @@ DEFAULT_PROFILE = "propresenter"
 PROFILES = {
     "propresenter": {
         "label": "ProPresenter",
-        "categories": "Welcome (welcome, pre-service and holding slides) · Countdown (countdown timers and videos) · Announcement (events, notices, registrations, promos) · Giving (offering, tithes, bank details, give online) · Sermon (series art, sermon title, points, quotes, questions) · Scripture (Bible verses that are not part of a sermon set) · Worship (song lyrics or song title slides; Subject is the song title) · Prayer · Communion · Baptism · Connect (new here, next steps, connect cards, sign-up QR codes) · Kids · Youth · Background (stills and motion loops with no meaningful text; Detail describes the look) · Lower Third (name and title straps, usually on a transparent background) · Bumper (intro, outro and transition videos) · Social (socials, follow us) · Other",
+        "categories": "Welcome (welcome and pre-service slides) · Closing (end of service: thanks for coming, see you next week, have a great week) · Countdown (countdown timers and videos) · Announcement (events, notices, registrations, promos) · Giving (offering, tithes, bank details, give online) · Sermon (series art, sermon title, points, quotes, questions) · Scripture (Bible verses that are not part of a sermon set) · Worship (song lyrics or song title slides; Subject is the song title) · Prayer · Communion · Baptism · Connect (new here, next steps, connect cards, sign-up QR codes) · Kids · Youth · Background (stills and motion loops with no meaningful text; Subject describes the look) · Lower Third (name and title straps, usually on a transparent background) · Bumper (intro, outro and transition videos) · Social (socials, follow us) · Other",
         "reader": """These files are slides, graphics and videos for church services, run in ProPresenter.
 - Read every piece of text exactly as written. Do not correct, complete or invent text.
 - Song lyrics: if you recognise the song, put its title in notes. If you are not sure, say so.
 - Bible verses: put the reference in subject (e.g. Hebrews 6:19).
+- Put the most specific name shown in subject: Love Offering or Building Fund rather than just Giving, the event's name rather than just Announcement.
 - Say whether the file shows only a headline or the full details (dates, prices, bank details, links, QR code).
 - Videos: say whether it looks like a countdown, a motion background or loop, or a promo.
 - Describe the look in visual: colours, imagery, style. That is what tells matching designs and text-free backgrounds apart.""",
@@ -28,8 +29,13 @@ PROFILES = {
 
 Format: Category - Subject - Detail
 - Category: exactly one from the list below. It always comes first, so files group together and a search for "Giving" finds every giving slide.
-- Subject: the specific thing: event name, sermon series and week, song title, Bible reference. Leave it out when the category already says it all (Giving - Bank Details).
-- Detail: only what tells this file apart from similar files in the batch: Title (headline only), Details (full information), QR, Point 1 Hope Holds, Verse 1, Chorus, Loop, Portrait, Sun 19 Oct. Leave it out if nothing needs telling apart.
+- Subject: the specific thing: event name, sermon series and week, song title, Bible reference, or the slide's own short heading (Closing - Thanks For Coming). Leave it out only when it would just repeat the category (Giving, not Giving - Giving).
+- Detail: only for files that would otherwise share a name with another file in this batch. A file with no look-alike gets no Detail: the only giving slide is just Giving.
+
+Telling look-alikes apart:
+- Use the words that differ between them, taken from the files themselves: a second giving slide that says Love Offering is Giving - Love Offering, next to plain Giving.
+- Only when the wording is the same, say what else differs: Bank Details or Details (dates, prices, links shown), QR, Portrait, Loop, Verse 1.
+- The plainest file of a set keeps the name without a Detail.
 
 Categories:
 {categories}
@@ -39,24 +45,26 @@ Style:
 - Aim for 40 characters or fewer, never more than 60. Drop filler words (the, our, join us, presents, welcome to).
 - Bible references use a full stop, not a colon: John 3.16, Romans 8.28-30, Psalm 23. Times too: 10.30am.
 - Dates are day then short month: Sun 19 Oct, 3-5 Oct. Add a year only when it is part of an event's name (Youth Camp 2026).
-- Sermon slides: Sermon - Series Wk N - Part (Sermon - Anchored Wk 3 - Title). Verses, quotes and points that share a sermon's design belong to that sermon (Sermon - Anchored Wk 3 - Hebrews 6.19), not to Scripture.
+- Sermon slides: Sermon - Series Wk N for the series slide, then Sermon - Series Wk N - Part for the rest (Sermon - Anchored Wk 3 - Point 1 Hope Holds). Verses, quotes and points that share a sermon's design belong to that sermon (Sermon - Anchored Wk 3 - Hebrews 6.19), not to Scripture.
 - Song lyrics: Worship - Song Title - Section, using ProPresenter's section names: Verse 1, Pre-Chorus, Chorus, Bridge, Tag, Ending. Name the song only when the reader was confident; otherwise use the first line as the Subject.
 - Countdowns: give the length, from the timer on screen or the video duration (Countdown - 5 Min).
 - The same design in several sizes: add Portrait, Square or Ultrawide from the aspect ratio. The 16:9 version gets no size.
 - Never put these in a name: file extensions, sequence numbers (the app adds numbers when order matters), the words Slide, Image, Graphic, Final, Copy or v2, Canva, or an export date.
 
-Examples:
-Welcome - Welcome Home
+Examples, all from one batch:
+Welcome
 Countdown - 5 Min
-Announcement - Youth Camp 2026 - Title
+Announcement - Youth Camp 2026
 Announcement - Youth Camp 2026 - Details
-Giving - Title
+Giving
+Giving - Love Offering
 Giving - Bank Details
-Sermon - Anchored Wk 3 - Title
+Sermon - Anchored Wk 3
 Sermon - Anchored Wk 3 - Hebrews 6.19
 Sermon - Anchored Wk 3 - Point 1 Hope Holds
 Worship - Amazing Grace - Verse 1
-Connect - New Here QR
+Connect - New Here
+Closing - Thanks For Coming
 Background - Purple Particles Loop""",
     },
     "general": {
