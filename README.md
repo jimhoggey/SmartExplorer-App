@@ -61,6 +61,6 @@ Requires Python 3.9+.
 - Mac/Linux: `./run.sh`
 - Windows: double-click `run.bat`
 
-Both create `.venv`, install `requirements.txt`, and start `desktop.py`. `SMART_EXPLORER_HEADLESS=1 python desktop.py` prints a URL to open in a browser instead of a window (drag and drop needs the window); `SMART_EXPLORER_MOCK=1` names files without a key, for testing.
+Both create `.venv`, install `requirements.txt`, and start `desktop.py`. The first run downloads about 40 MB of libraries and takes a few minutes; after that `run.sh` starts straight away, and reinstalls only when `requirements.txt` changes. Apple's built-in Python 3.9 works: `run.sh` updates its old pip and uses ready-made packages, so nothing needs compiling. `SMART_EXPLORER_HEADLESS=1 python desktop.py` prints a URL to open in a browser instead of a window (drag and drop needs the window); `SMART_EXPLORER_MOCK=1` names files without a key, for testing.
 
 Tests: `python -m pytest -q`. Build: `pip install pyinstaller && pyinstaller smart_explorer.spec` → `dist/SmartExplorer/`. Pushing a `v*` tag builds Windows and Mac zips via GitHub Actions and checks the packaged app can read PNG, HEIC and PDF.
