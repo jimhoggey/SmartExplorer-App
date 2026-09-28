@@ -22,16 +22,27 @@
 
 <section class="bar">
   <button id="pick">Pick folder</button>
-  <input id="folder" type="text" placeholder="…or paste a folder path and press Enter" spellcheck="false" aria-label="Folder path">
+  <input id="folder" type="text" placeholder="…or drop files or a folder anywhere, or paste a path and press Enter" spellcheck="false" aria-label="Folder path">
   <button id="name" class="primary" disabled>Name with AI</button>
   <button id="rename" disabled title="Ctrl/⌘+Enter">Rename all</button>
 </section>
 
+<section class="opts" aria-label="Naming options">
+  <div id="profile" class="seg" role="radiogroup" aria-label="Naming style"></div>
+  <input id="context" type="text" spellcheck="false" aria-label="Context for the AI"
+    placeholder="Context for the AI (optional): e.g. Sun 12 Oct · Anchored series wk 3 · Ps Dave">
+  <label class="check" title="Prefix 01, 02… so files keep their original order, e.g. when imported into ProPresenter">
+    <input id="order" type="checkbox"><span>Keep order</span>
+  </label>
+</section>
+
 <div id="progress" hidden><i></i></div>
 
-<p id="empty" class="empty"><b>No folder yet</b><span>Pick a folder of exported slides. Nothing is renamed until you review the names and say so.</span></p>
+<p id="empty" class="empty"><b>No files yet</b><span>Drop files or a folder here, or pick a folder. Nothing is renamed until you review the names and say so.</span></p>
 
 <main id="grid"></main>
+
+<div id="drop" hidden><div><b>Drop to load</b><span>Files, or a folder of files</span></div></div>
 
 <div id="toast" role="status" aria-live="polite" hidden><span></span><button id="undo" hidden>Undo</button></div>
 
@@ -44,6 +55,13 @@
     <label>Model
       <select id="model"></select>
       <input id="custom" type="text" placeholder="provider/model-id" hidden spellcheck="false" aria-label="Custom model id">
+      <small id="modelnote"></small>
+    </label>
+    <label>House rules
+      <textarea id="rules" rows="5" spellcheck="true" placeholder="Always applied, and they override the built-in convention. For example:
+We say Offering, not Giving.
+Our youth ministry is called Ignite.
+Put the speaker's name on sermon title slides."></textarea>
     </label>
     <p id="keymsg" class="msg" aria-live="polite"></p>
     <div class="actions">

@@ -27,9 +27,13 @@ def folder(tmp_path):
 
 def test_status_and_settings(client):
     s = client.get("/api/status").get_json()
-    assert s["has_key"] is False and s["model"] == config.DEFAULT_MODEL and s["models"]
-    s = client.post("/api/settings", json={"key": "sk", "model": "m"}).get_json()
-    assert s["has_key"] is True and s["model"] == "m"
+    assert s["has_key"] is False and s["model"] == config.DEFAULT_MODEL
+    assert s["models"][0]["id"] == config.DEFAULT_MODEL and s["models"][0]["note"]
+    assert [p["id"] for p in s["profiles"]] == ["propresenter", "general"]
+    assert s["profile"] == "propresenter" and s["keep_order"] is False and s["rules"] == ""
+    s = client.post("/api/settings", json={"key": "sk", "model": "m", "rules": "We say Offering", "bogus": "x"}).get_json()
+    assert s["has_key"] is True and s["model"] == "m" and s["rules"] == "We say Offering"
+    assert "bogus" not in config.load()
 
 
 def test_index(client):
@@ -40,13 +44,22 @@ def test_index(client):
 def test_scan(client, folder):
     assert client.post("/api/scan", json={"folder": str(folder / "nope")}).status_code == 400
     assert client.post("/api/scan", json={"folder": "."}).status_code == 400
+    assert client.post("/api/scan", json={"paths": ["relative.png", 7]}).status_code == 400
     items = client.post("/api/scan", json={"folder": str(folder)}).get_json()["items"]
     assert [i["name"] for i in items] == ["a.jpg", "b.png"]
     assert all(i["thumb"] and i["kind"] == "image" for i in items)
 
 
-def _name(client, folder):
-    job = client.post("/api/name", json={"folder": str(folder)}).get_json()["job"]
+def test_scan_dropped_files_and_folders(client, folder, tmp_path):
+    other = tmp_path / "other"
+    other.mkdir()
+    Image.new("RGB", (40, 20), "blue").save(other / "c.png")
+    items = client.post("/api/scan", json={"paths": [str(folder / "b.png"), str(other)]}).get_json()["items"]
+    assert [i["name"] for i in items] == ["c.png", "b.png"]  # grouped by folder: other/ sorts before slides/
+
+
+def _name(client, folder, **opts):
+    job = client.post("/api/name", json=dict({"folder": str(folder)}, **opts)).get_json()["job"]
     for _ in range(100):
         r = client.get("/api/name/" + job).get_json()
         if r["done"]:
@@ -59,11 +72,14 @@ def test_name_rename_undo(client, folder):
     r = _name(client, folder)
     assert r["results"][str(folder / "a.jpg")]["proposed"] == "Slide 1"
     assert r["results"][str(folder / "b.png")]["proposed"] == "Slide 2"
+    assert r["cost"] == 0
     items = [{"path": str(folder / "a.jpg"), "new_name": "Slide 1"}, {"path": str(folder / "b.png"), "new_name": "b"}]
     r = client.post("/api/rename", json={"items": items}).get_json()
     assert r["renamed"] == 1 and (folder / "Slide 1.jpg").exists() and (folder / "b.png").exists()
+    assert r["moved"] == [[str(folder / "a.jpg"), str(folder / "Slide 1.jpg")]]
     assert client.post("/api/undo", json={"journal": "../config"}).status_code == 404
-    assert client.post("/api/undo", json={"journal": r["journal"]}).get_json()["restored"] == 1
+    u = client.post("/api/undo", json={"journal": r["journal"]}).get_json()
+    assert u == {"restored": 1, "moved": [[str(folder / "Slide 1.jpg"), str(folder / "a.jpg")]]}
     assert (folder / "a.jpg").exists()
     assert client.post("/api/undo", json={"journal": r["journal"]}).status_code == 404
 
@@ -78,6 +94,23 @@ def test_results_keyed_by_path_survive_a_file_landing_mid_flight(client, folder)
     assert r["results"][str(folder / "a.jpg")]["proposed"] == "Slide 2"
     # A card the browser holds but the server no longer sees simply has no entry.
     assert str(folder / "gone.png") not in r["results"]
+
+
+def test_name_explicit_paths_with_options(client, folder):
+    job = client.post("/api/name", json={"paths": [str(folder / "b.png")], "profile": "general", "keep_order": True}).get_json()["job"]
+    for _ in range(100):
+        r = client.get("/api/name/" + job).get_json()
+        if r["done"]:
+            break
+        time.sleep(0.05)
+    assert r["results"] == {str(folder / "b.png"): {"proposed": "01 Slide 1", "error": None}}
+    s = client.get("/api/status").get_json()
+    assert s["profile"] == "general" and s["keep_order"] is True  # remembered for next launch
+
+
+def test_name_unknown_profile_falls_back(client, folder):
+    _name(client, folder, profile="../../etc")
+    assert config.load()["profile"] == "propresenter"
 
 
 def test_name_requires_key(client, folder, monkeypatch):
