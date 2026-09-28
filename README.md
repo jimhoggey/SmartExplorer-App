@@ -6,19 +6,25 @@ Reads images (`png jpg webp gif bmp tiff`), iPhone photos (`heic`), PDFs (first 
 
 ## Install
 
-**Windows:** download `SmartExplorer-Windows.zip` from the latest [release](../../releases), unzip anywhere, run `SmartExplorer\SmartExplorer.exe`. If SmartScreen warns, click *More info → Run anyway*.
+Download the latest version from the [releases page](../../releases/latest).
 
-**Mac:** download `SmartExplorer-macOS.zip`, unzip, drag **SmartExplorer.app** to Applications. The app is ad-hoc signed, not notarised, so macOS quarantines it on first download. Clear that once in Terminal, then open it normally:
+**Mac** (macOS 13 Ventura or later)
 
-```
-xattr -dr com.apple.quarantine /Applications/SmartExplorer.app
-```
+1. Download the `.dmg` for your Mac: `mac-apple-silicon` for Macs with an M1 or later chip, `mac-intel` for older Intel Macs (Apple menu → *About This Mac* shows which).
+2. Open it and drag **Smart Explorer** onto **Applications**.
+3. The first time you open it, macOS will say it can't verify the app, because it isn't signed with a paid Apple developer certificate. Click *Done*, then open *System Settings → Privacy & Security*, scroll down and click **Open Anyway** next to Smart Explorer. You only do this once.
+
+**Windows** (10 or 11)
+
+1. Download `SmartExplorer-…-windows-setup.exe` and run it. It installs for your user account, so no administrator password is needed.
+2. If Windows shows "Windows protected your PC", click *More info → Run anyway* (the installer isn't signed with a paid certificate).
+3. Start Smart Explorer from the Start menu.
 
 ## Get an OpenRouter key
 
 1. Sign up at [openrouter.ai](https://openrouter.ai) and add a few dollars of credit.
 2. Create a key under *Keys*.
-3. In Smart Explorer click the gear, paste the key, *Test key*, *Save*.
+3. In Smart Explorer click **Settings**, paste the key, *Test key*, *Save*.
 
 The key is stored in `~/.smart-explorer/config.json`. Nothing is sent anywhere except OpenRouter.
 
@@ -41,9 +47,9 @@ To choose on evidence rather than benchmarks, run the same folder through severa
 
 ## Use
 
-The three steps are shown along the top, and the orange button is always the next one.
+The three steps are shown above the files, and the coloured button is always the next one.
 
-1. **Load files:** drop files or a folder onto the window, **Pick folder**, or paste a path. Choose **ProPresenter** or **General** naming, optionally type context for this batch ("Sun 12 Oct · Anchored series wk 3 · Ps Dave"), and tick **Keep order** when the files are a deck that must stay in sequence (names get `01 `, `02 `… in the original order).
+1. **Load files:** drop files or a folder onto the window, click **Choose folder**, or paste a path. Choose **ProPresenter** or **General** naming, optionally type context for this batch ("Sun 12 Oct · Anchored series wk 3 · Ps Dave"), and tick **Keep order** when the files are a deck that must stay in sequence (names get `01 `, `02 `… in the original order).
 2. **Name with AI:** suggests a name for every file and shows what the batch cost on OpenRouter. Nothing on disk changes yet.
 3. **Check, then rename:** click any name to change it, then **Rename N files**. **Undo** puts the old names back. **Clear** empties the list for the next set (files on disk are not touched).
 
@@ -66,4 +72,12 @@ Requires Python 3.9+.
 
 Both create `.venv`, install `requirements.txt`, and start `desktop.py`. The first run downloads about 40 MB of libraries and takes a few minutes; after that `run.sh` starts straight away, and reinstalls only when `requirements.txt` changes. Apple's built-in Python 3.9 works: `run.sh` updates its old pip and uses ready-made packages, so nothing needs compiling. `SMART_EXPLORER_HEADLESS=1 python desktop.py` prints a URL to open in a browser instead of a window (drag and drop needs the window); `SMART_EXPLORER_MOCK=1` names files without a key, for testing.
 
-Tests: `python -m pytest -q`. Build: `pip install pyinstaller && pyinstaller smart_explorer.spec` → `dist/SmartExplorer/`. Pushing a `v*` tag builds Windows and Mac zips via GitHub Actions and checks the packaged app can read PNG, HEIC and PDF.
+Tests: `python -m pytest -q`. Build locally: `pip install pyinstaller && pyinstaller smart_explorer.spec` → `dist/Smart Explorer/` (and `dist/Smart Explorer.app` on a Mac).
+
+## Releasing a new version
+
+1. Set the new number in `version.py` (e.g. `0.2.1`) and merge it to `main`.
+2. Tag that commit and push the tag: `git tag v0.2.1 && git push origin v0.2.1`.
+3. GitHub Actions builds the Apple Silicon and Intel `.dmg` files and the Windows installer, checks each one (the app starts and reads PNG, HEIC and PDF; the Windows installer installs, starts and uninstalls), and publishes them as a release, in about 15 to 20 minutes. Point people at [releases/latest](../../releases/latest).
+
+The tag must match `version.py` or nothing is published. *Actions → build → Run workflow* builds the same files without publishing, for testing; download them from the run's *Artifacts*.

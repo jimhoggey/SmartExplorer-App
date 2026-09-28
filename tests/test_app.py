@@ -31,6 +31,7 @@ def test_status_and_settings(client):
     assert s["models"][0]["id"] == config.DEFAULT_MODEL and s["models"][0]["note"]
     assert [p["id"] for p in s["profiles"]] == ["propresenter", "general"]
     assert s["profile"] == "propresenter" and s["keep_order"] is False and "rules" not in s
+    assert s["version"] and s["version"].count(".") == 2
     s = client.post("/api/settings", json={"key": "sk", "model": "m", "rules": "We say Offering", "bogus": "x"}).get_json()
     assert s["has_key"] is True and s["model"] == "m"
     assert "bogus" not in config.load() and "rules" not in config.load()  # house rules were removed

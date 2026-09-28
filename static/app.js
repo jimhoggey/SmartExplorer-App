@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const els = ["gear", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
-  "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "keymsg", "test", "cancel",
+  "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "keymsg", "test", "cancel", "version",
   "save"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
@@ -269,6 +269,7 @@ function fillSettings() {
   els.key.placeholder = status.has_key ? "•••••••• (saved, leave blank to keep)" : "sk-or-…";
   els.keymsg.textContent = "";
   els.keymsg.className = "msg";
+  els.version.textContent = status.version ? `Smart Explorer ${status.version}` : "";
   showModelNote();
 }
 

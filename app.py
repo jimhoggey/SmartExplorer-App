@@ -13,6 +13,7 @@ import namer
 import prep
 import renamer
 import scanner
+from version import APP_VERSION
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 JOBS, LOCK = {}, threading.Lock()
@@ -20,7 +21,7 @@ JOBS, LOCK = {}, threading.Lock()
 
 def status():
     c = config.load()
-    return {"has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
+    return {"version": APP_VERSION, "has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
             "profiles": [{"id": k, "label": v["label"]} for k, v in conventions.PROFILES.items()],
             # the naming options last used, so the next launch starts the same way
             "profile": c.get("profile") if c.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE,

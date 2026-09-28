@@ -6,6 +6,7 @@ import webbrowser
 from werkzeug.serving import make_server
 
 from app import app
+from version import APP_VERSION
 
 
 def serve():
@@ -39,7 +40,7 @@ def main():
         import webview
         # text_select=False (the default) injects user-select: none, which macOS WebKit
         # passes down to inputs: the key field and name boxes then ignore typing and paste.
-        window = webview.create_window("Smart Explorer", url, width=1200, height=820, min_size=(900, 640),
+        window = webview.create_window("Smart Explorer " + APP_VERSION, url, width=1200, height=820, min_size=(900, 640),
                                        background_color="#0b0c0e", text_select=True)
         webview.start(listen_for_drops, window)
     except Exception:
