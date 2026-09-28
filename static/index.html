@@ -9,48 +9,65 @@
 </head>
 <body>
 <header>
-  <h1>Smart <span>Explorer</span></h1>
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>Smart Explorer</h1>
+      <p class="tagline">Names your slides and files with AI</p>
+    </div>
+  </div>
   <span class="spacer"></span>
   <div id="stat" aria-live="polite"></div>
-  <button id="gear" class="icon" title="Settings (Ctrl+,)" aria-label="Settings">
+  <button id="gear" class="ghost" title="Settings (Ctrl+,)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3.2"/>
       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.09a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.03z"/>
     </svg>
+    <span>Settings</span>
   </button>
 </header>
 
-<section class="bar">
-  <button id="pick">Pick folder</button>
-  <input id="folder" type="text" placeholder="…or drop files or a folder anywhere, or paste a path and press Enter" spellcheck="false" aria-label="Folder path">
-  <button id="name" class="primary" disabled>Name with AI</button>
-  <button id="rename" disabled title="Ctrl/⌘+Enter">Rename</button>
-  <button id="clear" disabled title="Empty the list to start on new files. Files on disk are not touched.">Clear</button>
-</section>
+<div class="page">
+  <section class="panel">
+    <div class="bar">
+      <button id="pick">Choose folder</button>
+      <input id="folder" type="text" placeholder="…or drop files or a folder anywhere, or paste a path and press Enter" spellcheck="false" aria-label="Folder path">
+      <button id="name" class="primary" disabled>Name with AI</button>
+      <button id="rename" disabled title="Ctrl/⌘+Enter">Rename</button>
+      <button id="clear" disabled title="Empty the list to start on new files. Files on disk are not touched.">Clear</button>
+    </div>
+    <div class="opts" aria-label="Naming options">
+      <div id="profile" class="seg" role="radiogroup" aria-label="Naming style"></div>
+      <input id="context" type="text" spellcheck="false" aria-label="Context for the AI"
+        placeholder="Anything the AI should know? (optional) e.g. Sun 12 Oct · Anchored series wk 3 · Ps Dave">
+      <label class="check" title="Adds 01, 02… so the files stay in their original order, e.g. a sermon deck in ProPresenter">
+        <input id="order" type="checkbox"><span>Keep order</span>
+      </label>
+    </div>
+  </section>
 
-<section class="opts" aria-label="Naming options">
-  <div id="profile" class="seg" role="radiogroup" aria-label="Naming style"></div>
-  <input id="context" type="text" spellcheck="false" aria-label="Context for the AI"
-    placeholder="Context for the AI (optional): e.g. Sun 12 Oct · Anchored series wk 3 · Ps Dave">
-  <label class="check" title="Prefix 01, 02… so files keep their original order, e.g. when imported into ProPresenter">
-    <input id="order" type="checkbox"><span>Keep order</span>
-  </label>
-</section>
+  <div id="flow" class="flow" hidden>
+    <ol id="steps" class="steps" aria-label="Steps">
+      <li><b>1</b>Load files</li>
+      <li><b>2</b>Name with AI</li>
+      <li><b>3</b>Check, then rename</li>
+    </ol>
+    <p id="guide" aria-live="polite"></p>
+  </div>
 
-<div id="flow" class="flow" hidden>
-  <ol id="steps" class="steps" aria-label="Steps">
-    <li><b>1</b>Load files</li>
-    <li><b>2</b>Name with AI</li>
-    <li><b>3</b>Check, then rename</li>
-  </ol>
-  <p id="guide" aria-live="polite"></p>
+  <div id="progress" hidden><i></i></div>
+
+  <section id="empty" class="empty">
+    <span class="empty-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v6.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><path d="M12 11v5M9.5 13.5 12 11l2.5 2.5"/></svg>
+    </span>
+    <h2 id="emptyTitle">Drop a folder of slides here</h2>
+    <p id="emptyText">Or choose a folder. Images, iPhone photos, PDFs and videos all work, and nothing is renamed until you check the names and say so.</p>
+    <button id="pickEmpty" class="primary">Choose folder</button>
+  </section>
+
+  <main id="grid"></main>
 </div>
-
-<div id="progress" hidden><i></i></div>
-
-<p id="empty" class="empty"><b>No files yet</b><span>Drop files or a folder here, or pick a folder. Nothing is renamed until you review the names and say so.</span></p>
-
-<main id="grid"></main>
 
 <div id="drop" hidden><div><b>Drop to load</b><span>Files, or a folder of files</span></div></div>
 
@@ -62,7 +79,7 @@
     <label>OpenRouter API key
       <input id="key" type="password" placeholder="sk-or-…" autocomplete="off" spellcheck="false">
     </label>
-    <label>Model
+    <label>AI model
       <select id="model"></select>
       <input id="custom" type="text" placeholder="provider/model-id" hidden spellcheck="false" aria-label="Custom model id">
       <small id="modelnote"></small>

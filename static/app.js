@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const els = ["gear", "pick", "folder", "name", "rename", "clear", "progress", "empty", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
+const els = ["gear", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
   "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "keymsg", "test", "cancel",
   "save"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
@@ -9,7 +9,7 @@ let naming = false, loading = null;
 // these files) and how many files the last Rename changed.
 let lastCost = null, renamedCount = 0;
 const FOLDER_HINT = els.folder.placeholder;
-const EMPTY_TEXT = [els.empty.firstElementChild.textContent, els.empty.lastElementChild.textContent];
+const EMPTY_TEXT = [els.emptyTitle.textContent, els.emptyText.textContent];
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -41,8 +41,8 @@ const costText = (usd) => usd ? `This batch cost ${dollars(usd)} on OpenRouter.`
 function render() {
   els.grid.innerHTML = "";
   els.empty.hidden = items.length > 0;
-  els.empty.firstElementChild.textContent = "Nothing to rename";
-  els.empty.lastElementChild.textContent = "No supported files there (images, HEIC photos, PDFs, mp4, mov).";
+  els.emptyTitle.textContent = "No files Smart Explorer can name in there";
+  els.emptyText.textContent = "It reads images (PNG, JPEG and more), iPhone photos (HEIC), PDFs and videos (MP4, MOV). Try another folder.";
   items.forEach((it, n) => {
     const card = document.createElement("article");
     card.className = "card";
@@ -231,7 +231,7 @@ function clearAll() {
   lastCost = null;
   renamedCount = 0;
   render();
-  [els.empty.firstElementChild.textContent, els.empty.lastElementChild.textContent] = EMPTY_TEXT;
+  [els.emptyTitle.textContent, els.emptyText.textContent] = EMPTY_TEXT;
   els.folder.value = "";
   els.folder.placeholder = FOLDER_HINT;
   els.progress.hidden = true;
@@ -309,7 +309,7 @@ window.onDropPaths = (paths) => {
   paths.length ? load(paths) : toast("Could not read the dropped items. Try Pick folder.", { error: true });
 };
 
-els.pick.onclick = async () => {
+els.pick.onclick = els.pickEmpty.onclick = async () => {
   const { folder } = await api("pick-folder");
   if (folder) load([folder]); else els.folder.focus();
 };
