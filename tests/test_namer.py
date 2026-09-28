@@ -424,3 +424,16 @@ def test_run_passes_existing_names_to_naming(monkeypatch):
     monkeypatch.setattr(namer, "chat", spy)
     namer.run("k", "m", ITEMS[:1], lambda i: ENC, existing=["Giving"])
     assert seen[0]["already_used"] == ["Giving"]
+
+
+def test_check_key_reports_spend_and_limit(monkeypatch):
+    body = b'{"data": {"label": "sk-or-v1-abc", "usage": 1.2345, "limit_remaining": 8.5, "is_free_tier": false}}'
+    monkeypatch.setattr(namer, "urlopen", lambda req, timeout=None: io.BytesIO(body))
+    assert namer.check_key("k") == {"ok": True, "label": "sk-or-v1-abc", "spent": 1.2345, "left": 8.5}
+
+
+def test_chat_asks_openrouter_for_cost(monkeypatch):
+    seen = []
+    stub(monkeypatch, "{}", seen)
+    namer.chat("k", "m", [])
+    assert json.loads(seen[0].data)["usage"] == {"include": True}

@@ -24,7 +24,8 @@
   <button id="pick">Pick folder</button>
   <input id="folder" type="text" placeholder="…or drop files or a folder anywhere, or paste a path and press Enter" spellcheck="false" aria-label="Folder path">
   <button id="name" class="primary" disabled>Name with AI</button>
-  <button id="rename" disabled title="Ctrl/⌘+Enter">Rename all</button>
+  <button id="rename" disabled title="Ctrl/⌘+Enter">Rename</button>
+  <button id="clear" disabled title="Empty the list to start on new files. Files on disk are not touched.">Clear</button>
 </section>
 
 <section class="opts" aria-label="Naming options">
@@ -35,6 +36,15 @@
     <input id="order" type="checkbox"><span>Keep order</span>
   </label>
 </section>
+
+<div id="flow" class="flow" hidden>
+  <ol id="steps" class="steps" aria-label="Steps">
+    <li><b>1</b>Load files</li>
+    <li><b>2</b>Name with AI</li>
+    <li><b>3</b>Check, then rename</li>
+  </ol>
+  <p id="guide" aria-live="polite"></p>
+</div>
 
 <div id="progress" hidden><i></i></div>
 

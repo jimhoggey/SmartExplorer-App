@@ -113,6 +113,30 @@ h1 span { color: var(--dim); }
 .check input { margin: 0; padding: 0; width: 14px; height: 14px; accent-color: var(--sig); cursor: pointer; }
 .check:has(input:checked) { color: var(--sig); }
 
+/* ---------- where you are ---------- */
+.flow { display: flex; align-items: center; gap: 14px; margin: -2px 0 14px; min-height: 28px; }
+.steps { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; flex: none; }
+.steps li {
+  display: flex; align-items: center; gap: 7px; padding: 5px 10px 5px 6px;
+  border: 1px solid var(--line); border-radius: 999px; white-space: nowrap;
+  font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+}
+.steps li b {
+  display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%;
+  background: var(--line); color: var(--mute); font-size: 9px; letter-spacing: 0;
+}
+.steps li.done { color: var(--mute); }
+.steps li.done b { background: var(--line-2); color: var(--ink); }
+.steps li.on { color: var(--sig); border-color: rgba(255,178,36,.55); }
+.steps li.on b { background: var(--sig); color: var(--sig-ink); }
+#guide { margin: 0; flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; color: var(--mute); }
+#guide b { color: var(--ink); font-weight: 600; }
+#guide .cost { color: var(--sig); }
+#guide button.link {
+  padding: 0; border: 0; background: none; color: var(--sig); cursor: pointer;
+  font: inherit; letter-spacing: normal; text-transform: none; text-decoration: underline;
+}
+
 #progress { height: 2px; background: var(--line); overflow: hidden; margin-bottom: 18px; }
 #progress i { display: block; height: 100%; width: 0; background: var(--sig); transition: width .45s ease; }
 #progress.busy::after {

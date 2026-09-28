@@ -41,10 +41,13 @@ To choose on evidence rather than benchmarks, run the same folder through severa
 
 ## Use
 
-1. **Drop** files or a folder onto the window, **Pick folder**, or paste a path.
-2. Choose **ProPresenter** or **General** naming, and optionally type context for this batch ("Sun 12 Oct · Anchored series wk 3 · Ps Dave").
-3. Tick **Keep order** when the files are a deck that must stay in sequence: names get `01 `, `02 `… in the original order.
-4. **Name with AI**, edit any name inline, then **Rename all**. **Undo** reverts the last batch.
+The three steps are shown along the top, and the orange button is always the next one.
+
+1. **Load files:** drop files or a folder onto the window, **Pick folder**, or paste a path. Choose **ProPresenter** or **General** naming, optionally type context for this batch ("Sun 12 Oct · Anchored series wk 3 · Ps Dave"), and tick **Keep order** when the files are a deck that must stay in sequence (names get `01 `, `02 `… in the original order).
+2. **Name with AI:** suggests a name for every file and shows what the batch cost on OpenRouter. Nothing on disk changes yet.
+3. **Check, then rename:** click any name to change it, then **Rename N files**. **Undo** puts the old names back. **Clear** empties the list for the next set (files on disk are not touched).
+
+*Settings → Test key* shows how much has been spent on your OpenRouter key so far.
 
 The full naming convention, with examples, is in [docs/naming-convention.md](docs/naming-convention.md); to change it for good (say, Offering instead of Giving), edit `conventions.py`.
 

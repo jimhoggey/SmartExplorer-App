@@ -88,7 +88,7 @@ def _request(url, key, data=None, timeout=90, tries=3):
 
 def chat(key, model, messages, schema=None, effort=None, max_tokens=None, timeout=90):
     """Return (reply text, cost in USD as reported by OpenRouter)."""
-    body = {"model": model, "messages": messages}
+    body = {"model": model, "messages": messages, "usage": {"include": True}}  # cost in usage.cost; harmless where already default
     if schema:
         body["response_format"] = {"type": "json_schema", "json_schema": {"name": "reply", "strict": True, "schema": schema}}
     if effort:
@@ -356,10 +356,16 @@ def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT
 
 
 def check_key(key):
+    """Whether the key works, plus what it has spent so far (US$) and any limit left."""
     try:
-        return {"ok": True, "label": (_request(KEY_URL, key).get("data") or {}).get("label")}
+        data = _request(KEY_URL, key).get("data") or {}
     except NamerError as e:
         return {"ok": False, "error": str(e)}
+    out = {"ok": True, "label": data.get("label")}
+    for field, name in (("usage", "spent"), ("limit_remaining", "left")):
+        if isinstance(data.get(field), (int, float)) and not isinstance(data.get(field), bool):
+            out[name] = float(data[field])
+    return out
 
 
 def mock_run(items, on_progress=None, keep_order=False, **_):

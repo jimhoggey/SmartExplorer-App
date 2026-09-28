@@ -1,11 +1,15 @@
 const $ = (id) => document.getElementById(id);
-const els = ["gear", "pick", "folder", "name", "rename", "progress", "empty", "grid", "toast", "undo", "stat", "drop",
+const els = ["gear", "pick", "folder", "name", "rename", "clear", "progress", "empty", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
   "profile", "context", "order", "settings", "key", "model", "custom", "modelnote", "keymsg", "test", "cancel",
   "save"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
 let naming = false, loading = null;
+// What the guide line reports: the last naming run's cost (null until one ran for
+// these files) and how many files the last Rename changed.
+let lastCost = null, renamedCount = 0;
 const FOLDER_HINT = els.folder.placeholder;
+const EMPTY_TEXT = [els.empty.firstElementChild.textContent, els.empty.lastElementChild.textContent];
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -30,7 +34,9 @@ const stem = (name) => name.replace(/\.[^.]+$/, "");
 const inputs = () => [...els.grid.querySelectorAll("input.name")];
 const parent = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const money = (usd) => !usd ? "" : usd < 0.01 ? " for under 1c" : ` for $${usd.toFixed(2)}`;
+const dollars = (usd) => "US$" + (usd >= 0.01 ? usd.toFixed(2) : usd.toFixed(4));
+const costText = (usd) => usd ? `This batch cost ${dollars(usd)} on OpenRouter.`
+  : status.has_key ? "OpenRouter did not report a cost for this batch." : "";
 
 function render() {
   els.grid.innerHTML = "";
@@ -71,9 +77,35 @@ function updateButtons() {
   const changed = inputs().filter((i) => i.classList.contains("changed")).length;
   els.name.disabled = !items.length || naming;
   els.rename.disabled = !changed || naming;
+  els.clear.disabled = !items.length || naming;
+  els.rename.textContent = changed ? `Rename ${plural(changed, "file")}` : "Rename";
+  // The orange button is always the next step: Name, then Rename, then Clear.
+  const done = !changed && renamedCount > 0 && !naming;
+  els.name.classList.toggle("primary", !changed && !done);
+  els.rename.classList.toggle("primary", changed > 0);
+  els.clear.classList.toggle("primary", done);
   els.stat.innerHTML = items.length
     ? `<b>${items.length}</b> file${items.length === 1 ? "" : "s"}${changed ? ` · <span class="on">${changed} to rename</span>` : ""}`
     : "";
+  showFlow(changed);
+}
+
+// The three steps, where you are, and what to do next. Built from numbers only.
+function showFlow(changed) {
+  els.flow.hidden = !items.length;
+  if (!items.length) return;
+  const step = naming ? 2 : changed ? 3 : renamedCount ? 4 : 2;
+  [...els.steps.children].forEach((li, n) => {
+    li.classList.toggle("on", n + 1 === step);
+    li.classList.toggle("done", n + 1 < step);
+  });
+  let html = naming ? `Reading ${plural(items.length, "file")} and choosing names…`
+    : changed ? `<b>Next:</b> check the names below and click any to change it, then <b>Rename ${plural(changed, "file")}</b>. Nothing on disk changes until you do, and you can Undo.`
+    : renamedCount ? `<b>Done:</b> renamed ${plural(renamedCount, "file")}${journal ? ' (<button type="button" class="link" data-undo>Undo</button>)' : ""}. <b>Next:</b> Clear, then load the next set.`
+    : "<b>Next:</b> Name with AI suggests a name for every file. Nothing on disk changes yet.";
+  const cost = naming || lastCost === null ? "" : costText(lastCost);
+  if (cost) html += ` <span class="cost">${cost}</span>`;
+  els.guide.innerHTML = html;
 }
 
 function showSources() {
@@ -84,13 +116,14 @@ function showSources() {
   els.folder.placeholder = `${plural(items.length, "file")} from ${plural(folders, "folder")} (dropped)`;
 }
 
-async function load(paths) {
+async function load(paths, afterRename = false) {
   paths = paths.filter(Boolean);
   if (!paths.length) return;
   if (naming) return toast("Wait for naming to finish before loading more files.", { error: true });
   const run = (async () => {
     try {
       items = (await api("scan", { paths })).items;
+      if (!afterRename) lastCost = null, renamedCount = 0;  // new files: a fresh start
       sources = paths;
       render();
       showSources();
@@ -107,6 +140,7 @@ async function nameAll() {
   if (loading) await loading;
   if (naming || !items.length) return;
   naming = true;
+  renamedCount = 0;
   els.undo.hidden = true;  // undoing now would rename files the job is reading
   els.name.disabled = els.rename.disabled = true;
   els.progress.hidden = false;
@@ -133,11 +167,12 @@ async function nameAll() {
       if (res.proposed) { inp.value = res.proposed; updateChanged(inp, it); }
     }
     els.progress.firstElementChild.style.width = "100%";
+    lastCost = r.cost || 0;
     const bad = errors + missing;
     toast(why ? why
       : missing ? `${plural(missing, "file")} ${missing === 1 ? "is" : "are"} no longer there. Load the folder again before renaming.`
-      : errors ? `Named ${items.length - errors} of ${items.length}${money(r.cost)}. ${errors} could not be read.`
-      : `Named ${plural(items.length, "file")}${money(r.cost)}. Review, edit, then Rename all.`, { error: bad > 0 });
+      : errors ? `Named ${items.length - errors} of ${items.length}. ${errors} could not be read.`
+      : `Named ${plural(items.length, "file")}. ${costText(lastCost)}`, { error: bad > 0 });
     inputs()[0] && inputs()[0].focus();
   } catch (e) {
     toast(e.message, { error: true });
@@ -165,11 +200,12 @@ async function renameAll() {
   if (!changed.length) return;
   try {
     const r = await api("rename", { items: changed });
-    journal = r.journal;
+    journal = r.renamed ? r.journal : null;
+    renamedCount = r.renamed;
     follow(r.moved);
     const msg = `Renamed ${plural(r.renamed, "file")}`;
     toast(r.error ? `${msg}, then stopped: ${r.error}` : msg, { undo: r.renamed > 0, error: !!r.error });
-    await load(sources);
+    await load(sources, true);
   } catch (e) { toast(e.message, { error: true }); }
 }
 
@@ -178,10 +214,27 @@ async function undo() {
   try {
     const r = await api("undo", { journal });
     journal = null;
+    renamedCount = 0;
     follow(r.moved);
     toast(`Restored ${plural(r.restored, "file")}`);
-    await load(sources);
+    await load(sources, true);
   } catch (e) { toast(e.message, { error: true }); }
+}
+
+// Empty the list for a new set of files. Only the list: nothing on disk changes.
+function clearAll() {
+  if (naming) return;
+  const pending = inputs().filter((i) => i.classList.contains("changed")).length;
+  if (pending && !confirm(`Clear the list and drop ${plural(pending, "suggested name")} you have not applied? Files on disk are not changed.`)) return;
+  items = [];
+  sources = [];
+  lastCost = null;
+  renamedCount = 0;
+  render();
+  [els.empty.firstElementChild.textContent, els.empty.lastElementChild.textContent] = EMPTY_TEXT;
+  els.folder.value = "";
+  els.folder.placeholder = FOLDER_HINT;
+  els.progress.hidden = true;
 }
 
 function renderProfiles() {
@@ -232,7 +285,8 @@ async function testKey() {
   els.keymsg.textContent = "Checking…";
   els.keymsg.className = "msg";
   const r = await api("check-key", { key: els.key.value.trim() });
-  els.keymsg.textContent = r.ok ? `Key works${r.label ? " (" + r.label + ")" : ""}` : r.error;
+  const spent = r.spent === undefined ? "" : ` ${dollars(r.spent)} spent on this key so far` + (r.left === undefined ? "." : `, ${dollars(r.left)} left on its limit.`);
+  els.keymsg.textContent = r.ok ? `Key works${r.label ? " (" + r.label + ")" : ""}.${spent}` : r.error;
   els.keymsg.className = "msg " + (r.ok ? "ok" : "err");
 }
 
@@ -266,7 +320,9 @@ els.folder.onkeydown = (e) => { if (e.key === "Enter") load([els.folder.value.tr
 els.folder.onchange = () => { if (els.folder.value.trim()) load([els.folder.value.trim()]); };
 els.name.onclick = nameAll;
 els.rename.onclick = renameAll;
+els.clear.onclick = clearAll;
 els.undo.onclick = undo;
+els.guide.onclick = (e) => { if (e.target.matches("[data-undo]")) undo(); };
 els.toast.onclick = (e) => { if (e.target !== els.undo) els.toast.hidden = true; };
 els.gear.onclick = () => { fillSettings(); els.settings.showModal(); };
 els.cancel.onclick = () => els.settings.close();
