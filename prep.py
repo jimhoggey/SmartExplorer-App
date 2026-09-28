@@ -3,6 +3,7 @@
 import base64
 import io
 import re
+import threading
 
 import imageio_ffmpeg
 from PIL import Image, ImageOps
@@ -17,17 +18,20 @@ except ImportError:
 MAX_SIDE = 1024
 PDF_MAX_SIDE = 1536  # documents carry smaller text than slides
 PDF_TEXT_LIMIT = 2000
+PDFIUM = threading.Lock()  # PDFium is not thread-safe: two PDFs at once can crash the process
 RATIOS = [("16:9", 16 / 9), ("4:3", 4 / 3), ("3:2", 3 / 2), ("1:1", 1.0), ("4:5", 4 / 5), ("2:3", 2 / 3),
           ("3:4", 3 / 4), ("9:16", 9 / 16), ("21:9", 21 / 9), ("32:9", 32 / 9)]
 
 
 def _has_alpha(img):
-    return img.mode in ("RGBA", "LA", "PA") or (img.mode == "P" and "transparency" in img.info)
+    return img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
 
 
 def _flatten(img):
     """RGB for JPEG. Transparent areas go mid-grey: a plain convert turns them
     black, which hides black text on a transparent lower third or prop."""
+    if img.mode.startswith("I;16") or img.mode == "I":
+        img = img.convert("I").point(lambda v: v / 256).convert("L")  # 16-bit would clip to white
     if not _has_alpha(img):
         return img.convert("RGB")
     img = img.convert("RGBA")
@@ -80,15 +84,18 @@ def video_frames_b64(path, n=3, max_side=MAX_SIDE, with_meta=False):
     meta = next(gen)
     total = max(int(meta["duration"] * meta["fps"]), 1)
     wanted = sorted({min(int(total * f), total - 1) for f in (0.1, 0.5, 0.9)[:n]})
-    out = []
+    out, last = [], None
     try:
         for i, frame in enumerate(gen):
+            last = frame
             if i in wanted:
                 out.append(_jpeg_b64(Image.frombytes("RGB", meta["size"], frame), max_side))
             if i >= wanted[-1]:
                 break
     finally:
         gen.close()
+    if not out and last is not None:  # duration came from a longer audio track: fewer frames than expected
+        out.append(_jpeg_b64(Image.frombytes("RGB", meta["size"], last), max_side))
     if not out:
         raise ValueError("No frames decoded from %s" % path)
     return (out, meta) if with_meta else out
@@ -97,20 +104,21 @@ def video_frames_b64(path, n=3, max_side=MAX_SIDE, with_meta=False):
 def _pdf(path, max_side, text_limit=PDF_TEXT_LIMIT):
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(path)
-    try:
-        page = pdf[0]
-        w, h = page.get_size()
-        img = page.render(scale=max_side / max(w, h, 1)).to_pil()
-        text = ""
-        if text_limit:
-            tp = page.get_textpage()
-            text = re.sub(r"\s+", " ", tp.get_text_range()).strip()[:text_limit]
-            tp.close()
-        page.close()
-        return img, text, len(pdf)
-    finally:
-        pdf.close()
+    with PDFIUM:
+        pdf = pdfium.PdfDocument(path)
+        try:
+            page = pdf[0]
+            w, h = page.get_size()
+            img = page.render(scale=max_side / max(w, h, 1)).to_pil().copy()  # own the pixels before closing
+            text = ""
+            if text_limit:
+                tp = page.get_textpage()
+                text = re.sub(r"\s+", " ", tp.get_text_range()).strip()[:text_limit]
+                tp.close()
+            page.close()
+            return img, text, len(pdf)
+        finally:
+            pdf.close()
 
 
 def thumb_b64(path, kind):
