@@ -149,7 +149,7 @@ def name_prompt(profile, rules="", context=""):
 
 How to work:
 - Base each name on what the file actually shows. Use the facts, context and house rules to fill gaps (series name, event, date, video length), never to invent content.
-- Name the batch as a set: files of the same kind should read alike, and near-duplicates must differ by what actually differs between them.
+- Name the batch as a set: files of the same kind should read alike. Where files would otherwise get the same name, tell them apart by what actually differs between them, in their own words where possible.
 - Every name must be different from every other name in the batch and from any names listed as already used.
 - If a file's original name already follows the convention and matches its content, keep it.
 - Reply with JSON only: {"names": [{"i": <the file's i>, "name": "<name without extension>"}]}, one entry per file.""" % (
