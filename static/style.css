@@ -16,6 +16,9 @@
   --pad: 20px;
 }
 * { box-sizing: border-box; }
+/* WebKit (the macOS window) inherits user-select into form fields; none there
+   means no typing or pasting. Keep fields editable whatever the page sets. */
+input, textarea, select { -webkit-user-select: text; user-select: text; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
