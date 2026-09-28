@@ -28,7 +28,7 @@ body {
 }
 
 /* ---------- controls ---------- */
-button, input, select {
+button, input, select, textarea {
   font: inherit; color: inherit; outline: none;
   border: 1px solid var(--line-2); border-radius: var(--r);
   background: var(--raise); padding: 9px 12px;
@@ -90,6 +90,26 @@ h1 span { color: var(--dim); }
 }
 .bar input:focus { color: var(--ink); border-color: var(--sig); }
 
+/* ---------- naming options ---------- */
+.opts { display: flex; gap: 8px; align-items: stretch; margin: -4px 0 14px; }
+.opts #context {
+  flex: 1; min-width: 0; background: var(--panel); border-color: var(--line);
+  font: 13px/1 var(--ui); padding: 0 12px;
+}
+.opts #context:focus { border-color: var(--sig); }
+.seg { display: flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; flex: none; }
+.seg button { border: 0; border-radius: 0; background: var(--panel); padding: 10px 13px; }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button[aria-checked="true"] { background: var(--raise); color: var(--sig); }
+.check {
+  display: flex; align-items: center; gap: 8px; flex: none; cursor: pointer; user-select: none;
+  padding: 0 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
+  font: 600 11px/1 var(--mono); letter-spacing: .11em; text-transform: uppercase; color: var(--mute);
+}
+.check:hover { border-color: var(--line-2); color: var(--ink); }
+.check input { margin: 0; padding: 0; width: 14px; height: 14px; accent-color: var(--sig); cursor: pointer; }
+.check:has(input:checked) { color: var(--sig); }
+
 #progress { height: 2px; background: var(--line); overflow: hidden; margin-bottom: 18px; }
 #progress i { display: block; height: 100%; width: 0; background: var(--sig); transition: width .45s ease; }
 #progress.busy::after {
@@ -131,7 +151,7 @@ h1 span { color: var(--dim); }
 .card.is-changed::before { opacity: 1; }
 
 .thumb { position: relative; aspect-ratio: 16 / 9; background: #000; }
-.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .idx {
   position: absolute; left: 8px; top: 7px;
   font: 600 10px/1 var(--mono); letter-spacing: .08em; color: rgba(255,255,255,.72);
@@ -167,6 +187,17 @@ h1 span { color: var(--dim); }
 }
 @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
+/* ---------- drop target ---------- */
+#drop {
+  position: fixed; inset: 0; z-index: 6; padding: 18px; pointer-events: none;
+  background: rgba(10,11,13,.72); backdrop-filter: blur(2px);
+}
+#drop > div {
+  height: 100%; display: grid; place-content: center; gap: 8px; text-align: center;
+  border: 2px dashed var(--sig); border-radius: 12px; color: var(--mute);
+}
+#drop b { font: 600 13px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--sig); }
+
 /* ---------- toast ---------- */
 #toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
@@ -190,7 +221,7 @@ h1 span { color: var(--dim); }
 dialog {
   background: var(--panel); color: var(--ink);
   border: 1px solid var(--line-2); border-radius: 10px;
-  padding: 24px; width: min(430px, 92vw);
+  padding: 24px; width: min(480px, 92vw);
   box-shadow: 0 30px 70px rgba(0,0,0,.65);
 }
 dialog::backdrop { background: rgba(8,9,11,.72); backdrop-filter: blur(3px); }
@@ -207,6 +238,16 @@ dialog label input, dialog label select {
   font: 13px/1 var(--ui); color: var(--ink); background: var(--bg); border-color: var(--line-2);
 }
 dialog label input { font-family: var(--mono); font-size: 12px; }
+dialog textarea {
+  display: block; width: 100%; margin-top: 8px; resize: vertical; min-height: 96px;
+  font: 13px/1.45 var(--ui); letter-spacing: normal; text-transform: none;
+  color: var(--ink); background: var(--bg); border-color: var(--line-2);
+}
+dialog textarea:focus { border-color: var(--sig); }
+dialog small {
+  display: block; margin-top: 7px; min-height: 15px;
+  font: 12px/1.35 var(--ui); letter-spacing: normal; text-transform: none; color: var(--mute);
+}
 dialog #custom { margin-top: 8px; }
 .msg { min-height: 17px; margin: -6px 0 16px; font: 11px/1.4 var(--mono); color: var(--dim); }
 .msg.ok { color: var(--sig); }

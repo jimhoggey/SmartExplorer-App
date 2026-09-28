@@ -18,3 +18,13 @@ def test_serve_honours_port(monkeypatch):
         port = s.getsockname()[1]
     monkeypatch.setenv("SMART_EXPLORER_PORT", str(port))
     assert desktop.serve() == "http://127.0.0.1:%d" % port
+
+
+def test_dropped_paths_uses_native_full_paths():
+    event = {"type": "drop", "dataTransfer": {"files": [
+        {"name": "Slides", "pywebviewFullPath": "/Users/me/Slides/"},
+        {"name": "a.png", "pywebviewFullPath": "/Users/me/a.png"},
+        {"name": "b.png"},  # dropped from a browser tab: no path
+    ]}}
+    assert desktop.dropped_paths(event) == ["/Users/me/Slides/", "/Users/me/a.png"]
+    assert desktop.dropped_paths({"type": "drop"}) == []

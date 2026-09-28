@@ -8,24 +8,32 @@ from pathlib import Path
 from flask import Flask, jsonify, request
 
 import config
+import conventions
 import namer
 import prep
 import renamer
 import scanner
 
-MODELS = ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "openai/gpt-4o-mini", "anthropic/claude-sonnet-4"]
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 JOBS, LOCK = {}, threading.Lock()
 
 
 def status():
     c = config.load()
-    return {"has_key": bool(c.get("key")), "model": c.get("model") or config.DEFAULT_MODEL, "models": MODELS}
+    return {"has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
+            "rules": c.get("rules", ""),
+            "profiles": [{"id": k, "label": v["label"]} for k, v in conventions.PROFILES.items()],
+            # the naming options last used, so the next launch starts the same way
+            "profile": c.get("profile") if c.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE,
+            "keep_order": bool(c.get("keep_order"))}
 
 
-def folder_or_400():
-    f = str((request.get_json(silent=True) or {}).get("folder") or "")
-    return f if f and Path(f).is_absolute() and Path(f).is_dir() else None
+def paths_or_none():
+    """Absolute, existing paths from {"paths": [...]} or the older {"folder": ...}."""
+    body = request.get_json(silent=True) or {}
+    raw = body.get("paths") or ([body["folder"]] if body.get("folder") else [])
+    ok = [str(p) for p in raw if isinstance(p, str) and p and Path(p).is_absolute() and Path(p).exists()]
+    return ok or None
 
 
 def thumb(item):
@@ -47,7 +55,7 @@ def api_status():
 
 @app.post("/api/settings")
 def api_settings():
-    config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model")})
+    config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model", "rules") and isinstance(v, str)})
     return jsonify(status())
 
 
@@ -58,10 +66,10 @@ def api_check_key():
 
 @app.post("/api/scan")
 def api_scan():
-    f = folder_or_400()
-    if not f:
-        return jsonify(error="Not a folder"), 400
-    items = scanner.scan(f)
+    paths = paths_or_none()
+    if not paths:
+        return jsonify(error="Not a folder or file"), 400
+    items = scanner.scan(*paths)
     with ThreadPoolExecutor(8) as ex:
         thumbs = list(ex.map(thumb, items))
     return jsonify(items=[dict(i, thumb=t) for i, t in zip(items, thumbs)])
@@ -69,15 +77,20 @@ def api_scan():
 
 @app.post("/api/name")
 def api_name():
-    f = folder_or_400()
-    if not f:
-        return jsonify(error="Not a folder"), 400
+    paths = paths_or_none()
+    if not paths:
+        return jsonify(error="Not a folder or file"), 400
     key = config.load().get("key")
     if not key and os.environ.get("SMART_EXPLORER_MOCK") != "1":
         return jsonify(error="Add your OpenRouter key in Settings"), 400
-    items = scanner.scan(f)
+    body = request.get_json()
+    profile = body.get("profile") if body.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE
+    config.save(profile=profile, keep_order=bool(body.get("keep_order")))
+    opts = {"profile": profile, "context": str(body.get("context") or "")[:2000],
+            "rules": config.load().get("rules", "")[:4000], "keep_order": bool(body.get("keep_order"))}
+    items = scanner.scan(*paths)
     jid = uuid.uuid4().hex
-    job = JOBS[jid] = {"done": False, "total": len(items), "progress": 0, "results": {}, "error": None}
+    job = JOBS[jid] = {"done": False, "total": len(items), "progress": 0, "results": {}, "cost": 0.0, "error": None}
 
     def on_progress(item_id, stage, proposed=None):
         with LOCK:
@@ -85,11 +98,14 @@ def api_name():
 
     def work():
         try:
-            out = namer.run(key, status()["model"], items, prep.encode, on_progress) if key else namer.mock_run(items, on_progress)
-            # Keyed by absolute path, never by list position: this endpoint
-            # re-scans the folder, so an index can point at a different file
-            # than the browser is showing.
-            job["results"] = {r["path"]: {"proposed": r["proposed"], "error": r.get("error")} for r in out}
+            if key:
+                out = namer.run(key, config.model(), items, prep.encode, on_progress, **opts)
+            else:
+                out = namer.mock_run(items, on_progress, **opts)
+            # Keyed by absolute path, never by list position: the browser's list
+            # and this scan can differ if files land or leave in between.
+            job["results"] = {r["path"]: {"proposed": r["proposed"], "error": r.get("error")} for r in out["results"]}
+            job["cost"] = out["cost"]
         except Exception as e:
             job["error"] = str(e)
         job["done"] = True
@@ -105,7 +121,9 @@ def api_name_poll(job):
 
 @app.post("/api/rename")
 def api_rename():
-    return jsonify(renamer.apply(renamer.plan(request.get_json()["items"])))
+    pairs = renamer.plan(request.get_json()["items"])
+    out = renamer.apply(pairs)
+    return jsonify(dict(out, moved=pairs[:out["renamed"]]))
 
 
 @app.post("/api/undo")
@@ -113,7 +131,8 @@ def api_undo():
     jid = str(request.get_json().get("journal") or "")
     if not re.fullmatch(r"[0-9a-f]{32}", jid) or not (config.CONFIG_DIR / "journal" / (jid + ".json")).is_file():
         return jsonify(error="Nothing to undo"), 404
-    return jsonify(restored=renamer.undo(jid))
+    moved = renamer.undo(jid)
+    return jsonify(restored=len(moved), moved=moved)
 
 
 @app.get("/api/pick-folder")

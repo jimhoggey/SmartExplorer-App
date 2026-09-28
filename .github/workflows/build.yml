@@ -27,7 +27,9 @@ jobs:
           dist/SmartExplorer/SmartExplorer* &
           for i in $(seq 1 40); do
             sleep 2
-            curl -sf http://127.0.0.1:8765/api/status && curl -sf -o /dev/null http://127.0.0.1:8765/ && exit 0
+            if curl -sf http://127.0.0.1:8765/api/status && curl -sf -o /dev/null http://127.0.0.1:8765/; then
+              python scripts/smoke_formats.py http://127.0.0.1:8765; exit $?
+            fi
           done
           echo "app did not respond within 80s"; exit 1
       - name: Package

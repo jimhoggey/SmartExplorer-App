@@ -11,6 +11,28 @@ def _decode(b64):
     return Image.open(io.BytesIO(base64.b64decode(b64)))
 
 
+def write_pdf(path, pages):
+    """A real (tiny) PDF with a text layer, one page per string."""
+    n = len(pages)
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [%s] /Count %d >>" % (" ".join("%d 0 R" % (4 + 2 * i) for i in range(n)), n),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    for i, text in enumerate(pages):
+        stream = "BT /F1 28 Tf 72 760 Td (%s) Tj ET" % text
+        objs.append("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents %d 0 R /Resources << /Font << /F1 3 0 R >> >> >>" % (5 + 2 * i))
+        objs.append("<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+    out, offsets = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += ("%d 0 obj\n%s\nendobj\n" % (i, o)).encode()
+    xref = len(out)
+    out += ("xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)).encode()
+    out += b"".join(("%010d 00000 n \n" % off).encode() for off in offsets)
+    out += ("trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)).encode()
+    path.write_bytes(out)
+    return str(path)
+
+
 @pytest.fixture
 def png(tmp_path):
     p = tmp_path / "big.png"
@@ -35,6 +57,11 @@ def mp4(tmp_path):
     return str(p)
 
 
+@pytest.fixture
+def pdf(tmp_path):
+    return write_pdf(tmp_path / "invoice.pdf", ["TAX INVOICE 4471", "Page two"])
+
+
 def test_image_b64(png):
     img = _decode(prep.image_b64(png))
     assert img.format == "JPEG"
@@ -47,11 +74,68 @@ def test_video_frames_b64(mp4):
     assert all(_decode(f).format == "JPEG" for f in frames)
 
 
-def test_thumb_b64(png, mp4):
+def test_thumb_b64(png, mp4, pdf):
     assert _decode(prep.thumb_b64(png, "image")).width <= 240
     assert _decode(prep.thumb_b64(mp4, "video")).width <= 240
+    assert max(_decode(prep.thumb_b64(pdf, "pdf")).size) <= 240
 
 
 def test_encode(png, mp4):
-    assert len(prep.encode({"path": png, "kind": "image"})) == 1
-    assert len(prep.encode({"path": mp4, "kind": "video"})) == 3
+    e = prep.encode({"path": png, "kind": "image"})
+    assert len(e["images"]) == 1 and e["text"] == ""
+    assert e["facts"] == {"size": "2000x1000", "aspect": "2.00:1 landscape"}
+    v = prep.encode({"path": mp4, "kind": "video"})
+    assert len(v["images"]) == 3 and v["facts"]["duration"] == "1s" and v["facts"]["aspect"] == "1:1 square"
+
+
+def test_encode_pdf_renders_first_page_and_reads_text(pdf):
+    e = prep.encode({"path": pdf, "kind": "pdf"})
+    assert len(e["images"]) == 1 and max(_decode(e["images"][0]).size) == prep.PDF_MAX_SIDE
+    assert "TAX INVOICE 4471" in e["text"] and "Page two" not in e["text"]
+    assert e["facts"]["pages"] == 2 and "portrait" in e["facts"]["aspect"]
+
+
+def test_encode_photo_date_and_orientation(tmp_path):
+    p = tmp_path / "IMG_1234.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6  # stored sideways; viewers rotate 90 degrees clockwise
+    exif.get_ifd(0x8769)[36867] = "2026:09:14 10:31:05"
+    Image.new("RGB", (400, 300), "red").save(p, exif=exif.tobytes())
+    e = prep.encode({"path": str(p), "kind": "image"})
+    assert e["facts"] == {"size": "300x400", "aspect": "3:4 portrait", "taken": "2026-09-14"}
+    assert _decode(e["images"][0]).size == (300, 400)
+
+
+def test_encode_heic(tmp_path):
+    pytest.importorskip("pillow_heif")
+    p = tmp_path / "IMG_0001.HEIC"
+    exif = Image.Exif()
+    exif.get_ifd(0x8769)[36867] = "2025:12:25 09:00:00"
+    Image.new("RGB", (640, 480), (30, 120, 200)).save(p, format="HEIF", exif=exif.tobytes())
+    e = prep.encode({"path": str(p), "kind": "image"})
+    assert e["facts"] == {"size": "640x480", "aspect": "4:3 landscape", "taken": "2025-12-25"}
+    assert _decode(prep.thumb_b64(str(p), "image")).width == 240
+
+
+def test_aspect():
+    assert prep.aspect(1920, 1080) == "16:9 landscape"
+    assert prep.aspect(1080, 1920) == "9:16 portrait"
+    assert prep.aspect(1080, 1080) == "1:1 square"
+    assert prep.aspect(3840, 1080) == "32:9 ultrawide"
+    assert prep.aspect(0, 10) == ""
+
+
+def test_transparent_png_keeps_dark_text_visible(tmp_path):
+    """A plain RGB convert turns transparency black, so black text on a
+    transparent lower third vanished before the model ever saw it."""
+    p = tmp_path / "lower third.png"
+    img = Image.new("RGBA", (400, 100), (0, 0, 0, 0))
+    img.paste((0, 0, 0, 255), (40, 40, 360, 60))  # a black bar standing in for text
+    img.save(p)
+    e = prep.encode({"path": str(p), "kind": "image"})
+    seen = _decode(e["images"][0]).convert("L")
+    assert seen.getpixel((5, 5)) > 100 and seen.getpixel((200, 50)) < 30
+    assert e["facts"]["transparent"].startswith("yes")
+    solid = tmp_path / "solid.png"
+    Image.new("RGBA", (40, 20), (9, 9, 9, 255)).save(solid)
+    assert "transparent" not in prep.encode({"path": str(solid), "kind": "image"})["facts"]
