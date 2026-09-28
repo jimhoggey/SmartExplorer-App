@@ -354,3 +354,67 @@ def test_check_key(monkeypatch):
     assert namer.check_key("k") == {"ok": True, "label": "sk-1"}
     monkeypatch.setattr(namer, "urlopen", raise_(URLError("down")))
     assert namer.check_key("k")["ok"] is False
+
+
+def test_name_all_keeps_cost_when_reply_is_not_json(monkeypatch):
+    stub(monkeypatch, "Sorry, I can't help with that.", cost=0.05)
+    names, err, cost = namer.name_all("k", "m", DESCS)
+    assert err and cost == 0.05
+
+
+def test_name_all_duplicate_entry_does_not_discard_names(monkeypatch):
+    stub(monkeypatch, json.dumps({"names": [{"i": 0, "name": "A"}, {"i": 0, "name": "A again"},
+                                            {"i": 1, "name": "B"}, {"i": 2, "name": "C"}]}))
+    assert namer.name_all("k", "m", DESCS)[:2] == (["A", "B", "C"], None)
+
+
+def test_name_all_prefers_the_names_key(monkeypatch):
+    stub(monkeypatch, json.dumps({"notes": ["x", "y", "z"], "names": [{"i": 0, "name": "A"}, {"i": 1, "name": "B"}, {"i": 2, "name": "C"}]}))
+    assert namer.name_all("k", "m", DESCS)[0] == ["A", "B", "C"]
+
+
+def test_name_all_avoids_names_already_in_the_folder(monkeypatch):
+    seen = []
+    stub(monkeypatch, '["Giving", "Giving - Love Offering", "Welcome"]', seen)
+    names, err, _ = namer.name_all("k", "m", DESCS, existing=["Giving", "Background"])
+    assert json.loads(json.loads(seen[0].data)["messages"][1]["content"])["already_used"] == ["Giving", "Background"]
+    assert names == ["Giving (2)", "Giving - Love Offering", "Welcome"]  # a clash the model missed shows before renaming
+
+
+def test_read_batch_rejects_extra_descriptions(monkeypatch):
+    """Three entries for two files (say, a video's frames described separately)
+    means the numbering can't be trusted, so the batch is retried file by file."""
+    stub(monkeypatch, json.dumps({"files": [dict(DESC, n=1), dict(DESC, n=2), dict(DESC, n=3)]}))
+    with pytest.raises(namer.NamerError, match="3 descriptions for 2 files"):
+        namer.read_batch("k", "m", [ITEM, ITEM], [ENC, ENC])
+
+
+def test_run_model_keys_cannot_override_the_apps(monkeypatch):
+    seen = []
+
+    def chat(key, model, messages, **kw):
+        content = messages[1]["content"]
+        if isinstance(content, list):
+            return json.dumps({"files": [dict(DESC, n=n, i=99, original=["x"]) for n in range(1, files_in(content) + 1)]}), 0.0
+        files = json.loads(content)["files"]
+        seen.append(files)
+        return json.dumps({"names": [{"i": f["i"], "name": "Name %d" % f["i"]} for f in files]}), 0.0
+
+    monkeypatch.setattr(namer, "chat", chat)
+    out = namer.run("k", "m", ITEMS, lambda i: ENC)
+    assert [f["i"] for f in seen[0]] == [0, 1, 2] and seen[0][0]["original"] == "0.png"
+    assert [r["proposed"] for r in out["results"]] == ["Name 0", "Name 1", "Name 2"]
+
+
+def test_run_passes_existing_names_to_naming(monkeypatch):
+    seen = []
+    chat = fake_chat()
+
+    def spy(key, model, messages, **kw):
+        if not isinstance(messages[1]["content"], list):
+            seen.append(json.loads(messages[1]["content"]))
+        return chat(key, model, messages, **kw)
+
+    monkeypatch.setattr(namer, "chat", spy)
+    namer.run("k", "m", ITEMS[:1], lambda i: ENC, existing=["Giving"])
+    assert seen[0]["already_used"] == ["Giving"]

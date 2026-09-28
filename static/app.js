@@ -4,7 +4,7 @@ const els = ["gear", "pick", "folder", "name", "rename", "progress", "empty", "g
   "save"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
-let naming = false;
+let naming = false, loading = null;
 const FOLDER_HINT = els.folder.placeholder;
 
 async function api(path, body) {
@@ -69,8 +69,8 @@ function updateChanged(inp, it) {
 
 function updateButtons() {
   const changed = inputs().filter((i) => i.classList.contains("changed")).length;
-  els.name.disabled = !items.length;
-  els.rename.disabled = !changed;
+  els.name.disabled = !items.length || naming;
+  els.rename.disabled = !changed || naming;
   els.stat.innerHTML = items.length
     ? `<b>${items.length}</b> file${items.length === 1 ? "" : "s"}${changed ? ` · <span class="on">${changed} to rename</span>` : ""}`
     : "";
@@ -88,17 +88,26 @@ async function load(paths) {
   paths = paths.filter(Boolean);
   if (!paths.length) return;
   if (naming) return toast("Wait for naming to finish before loading more files.", { error: true });
-  try {
-    items = (await api("scan", { paths })).items;
-    sources = paths;
-    render();
-    showSources();
-    els.progress.hidden = true;
-  } catch (e) { toast(e.message, { error: true }); }
+  const run = (async () => {
+    try {
+      items = (await api("scan", { paths })).items;
+      sources = paths;
+      render();
+      showSources();
+      els.progress.hidden = true;
+    } catch (e) { toast(e.message, { error: true }); }
+  })();
+  loading = run;
+  try { await run; } finally { if (loading === run) loading = null; }
 }
 
 async function nameAll() {
+  // A path typed and then left by clicking this button starts loading first;
+  // name what that load shows, not the list it is about to replace.
+  if (loading) await loading;
+  if (naming || !items.length) return;
   naming = true;
+  els.undo.hidden = true;  // undoing now would rename files the job is reading
   els.name.disabled = els.rename.disabled = true;
   els.progress.hidden = false;
   els.progress.className = "busy";
@@ -149,6 +158,7 @@ const follow = (moved) => {
 };
 
 async function renameAll() {
+  if (naming) return;
   const inp = inputs();
   const changed = items.map((it, i) => ({ path: it.path, new_name: inp[i].value.trim() }))
     .filter((x, i) => x.new_name && x.new_name !== stem(items[i].name));
@@ -164,6 +174,7 @@ async function renameAll() {
 }
 
 async function undo() {
+  if (naming) return;  // the button is hidden while naming; this guards a stray click
   try {
     const r = await api("undo", { journal });
     journal = null;

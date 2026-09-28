@@ -73,5 +73,6 @@ Canon EOS R8 - User Manual
 
 - **House rules** (Settings) are sent with every batch and override the convention. Use them for your church's vocabulary: "We say Offering, not Giving", "Our youth ministry is Ignite", "Put the speaker's name on sermon title slides".
 - **Context** (the box under the folder path) applies to one batch: "Sun 12 Oct · Anchored series wk 3 · Ps Dave". The AI uses it to fill gaps, never to invent content that is not on the files.
+- **Names already in the folder** are sent to the AI as taken, so a new giving slide next to last week's `Giving` becomes something like `Giving - Love Offering` rather than a second `Giving`. Any clash it still makes shows as `(2)` in the review grid, before anything is renamed.
 - **Keep order** adds `01 `, `02 `… in the original order, so a deck imported into ProPresenter stays in sequence. The numbers are added by the app, not the AI.
 - To change the convention itself, edit `conventions.py`.

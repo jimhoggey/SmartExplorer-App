@@ -89,6 +89,7 @@ def api_name():
     opts = {"profile": profile, "context": str(body.get("context") or "")[:2000],
             "rules": config.load().get("rules", "")[:4000], "keep_order": bool(body.get("keep_order"))}
     items = scanner.scan(*paths)
+    opts["existing"] = scanner.siblings(items)
     jid = uuid.uuid4().hex
     job = JOBS[jid] = {"done": False, "total": len(items), "progress": 0, "results": {}, "cost": 0.0, "error": None}
 

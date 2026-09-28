@@ -121,3 +121,23 @@ def test_name_requires_key(client, folder, monkeypatch):
 
 def test_pick_folder_without_window(client):
     assert client.get("/api/pick-folder").get_json() == {"folder": None}
+
+
+def test_name_tells_the_namer_what_is_already_in_the_folder(client, folder, monkeypatch):
+    import namer
+    seen = {}
+
+    def run(key, model, items, encode, on_progress=None, **opts):
+        seen.update(opts, names=[i["name"] for i in items])
+        return {"results": [{"id": i["id"], "path": i["path"], "proposed": "X"} for i in items], "cost": 0.0}
+
+    monkeypatch.setattr(namer, "run", run)
+    config.save(key="sk-or-test")
+    (folder / "Giving.png").write_bytes((folder / "a.jpg").read_bytes())
+    job = client.post("/api/name", json={"paths": [str(folder / "b.png")]}).get_json()["job"]
+    for _ in range(100):
+        if client.get("/api/name/" + job).get_json()["done"]:
+            break
+        time.sleep(0.05)
+    assert seen["names"] == ["b.png"]
+    assert seen["existing"] == ["a", "Giving", "notes"]
