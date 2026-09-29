@@ -119,15 +119,16 @@ def api_prompts():
 
 @app.post("/api/prompts")
 def api_prompts_save():
-    """Save a naming style's prompt parts. Parts left empty, or the same as the
-    default, go back to the default (so later improvements to it still apply)."""
+    """Save a naming style's prompt parts. Parts sent empty, or the same as the
+    default, go back to the default (so later improvements to it still apply);
+    parts not sent keep their saved edits."""
     profile, fields, err = prompt_draft()
     if err:
         return jsonify(error=err), 400
     with LOCK:
         saved = config.load().get("prompt_edits")
         saved = dict(saved) if isinstance(saved, dict) else {}
-        saved[profile] = conventions.only_edits(profile, fields)
+        saved[profile] = conventions.merged(profile, fields)
         config.save(prompt_edits={k: v for k, v in saved.items() if v})
     return jsonify(prompts())
 

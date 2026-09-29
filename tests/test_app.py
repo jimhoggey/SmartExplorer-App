@@ -146,6 +146,12 @@ def test_prompts_view_edit_and_reset(client):
     assert config.load()["prompt_edits"] == {}
 
 
+def test_saving_one_part_keeps_the_others(client):
+    client.post("/api/prompts", json={"profile": "general", "reader": "Look closely.", "rules": "Name by {categories}"})
+    client.post("/api/prompts", json={"profile": "general", "rules": ""})  # only rules sent, emptied
+    assert config.load()["prompt_edits"] == {"general": {"reader": "Look closely."}}
+
+
 def test_prompts_reject_bad_input(client):
     assert client.post("/api/prompts", json={"profile": "../x", "rules": "a"}).status_code == 400
     r = client.post("/api/prompts", json={"profile": "general", "rules": "x" * 20001})

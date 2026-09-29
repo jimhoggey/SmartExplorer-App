@@ -129,8 +129,19 @@ def edits(profile):
     return only_edits(profile, got) if isinstance(got, dict) else {}
 
 
+def merged(profile, fields):
+    """The saved edits with these fields applied: a field given empty goes back to
+    the default, a field not given keeps its saved edit."""
+    out = edits(profile)
+    for k, v in fields.items():
+        if k in FIELDS and isinstance(v, str):
+            out.pop(k, None)
+    out.update(only_edits(profile, fields))
+    return out
+
+
 def get(profile, draft=None):
-    """A profile as the AI gets it: the defaults, with the saved edits (or, for a
+    """A profile as the AI gets it: the defaults, with the saved edits (and, for a
     preview, the draft ones) on top, and the categories put into the rules."""
-    p = dict(PROFILES[resolve(profile)], **(edits(profile) if draft is None else only_edits(profile, draft)))
+    p = dict(PROFILES[resolve(profile)], **(edits(profile) if draft is None else merged(profile, draft)))
     return dict(p, rules=p["rules"].replace("{categories}", p["categories"]))
