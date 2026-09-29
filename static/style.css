@@ -106,7 +106,7 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
 }
 .seg button { border: 0; box-shadow: none; background: none; color: var(--mute); padding: 6px 12px; border-radius: 7px; }
 .seg button:hover:not(:disabled) { background: rgba(255, 255, 255, .6); color: var(--ink); }
-.seg button[aria-checked="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-md); }
+.seg button[aria-checked="true"], .seg button[aria-selected="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-md); }
 .check {
   display: flex; align-items: center; gap: 8px; flex: none; cursor: pointer; user-select: none;
   padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm);
@@ -138,10 +138,7 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
   display: inline-block; margin-left: 4px; padding: 1px 9px; border-radius: 999px;
   background: var(--ok-soft); color: var(--ok); font-weight: 600; font-size: 12.5px;
 }
-#guide button.link {
-  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
-  font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
-}
+#guide button.mini { margin-left: 6px; padding: 3px 10px; font-size: 12.5px; vertical-align: 1px; }
 @media (max-width: 1100px) {
   .flow { flex-direction: column; align-items: flex-start; gap: 8px; }
 }
@@ -269,6 +266,36 @@ dialog #custom { margin-top: 8px; }
 .keyrow button { flex: none; font-weight: 600; }
 .spend { margin: -4px 0 14px; font-size: 13px; color: var(--ink-2); }
 .spend:empty { display: none; }
+.styles {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 16px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2);
+}
+.styles div { flex: 1; font-size: 13px; color: var(--ink-2); }
+.styles small { display: block; margin-top: 2px; color: var(--mute); }
+
+/* ---------- naming prompts ---------- */
+/* The prompt boxes scroll; the buttons stay in view. */
+dialog.wide { width: min(880px, 94vw); max-height: 92vh; overflow: hidden; }
+dialog.wide form { display: flex; flex-direction: column; max-height: calc(92vh - 50px); }
+#pedit, #pfull { flex: 1; min-height: 0; overflow: auto; padding: 2px 4px 2px 2px; margin: 0 -4px 0 -2px; }
+dialog .seg { align-self: flex-start; margin-bottom: 10px; }
+dialog .seg .tag {
+  margin-left: 4px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft);
+  color: var(--accent); font-size: 11px; font-weight: 600;
+}
+#prompts label small { display: inline; min-height: 0; margin: 0 0 0 6px; font-weight: 400; color: var(--mute); }
+dialog textarea {
+  display: block; width: 100%; margin-top: 6px; padding: 9px 11px; resize: vertical;
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--surface);
+  font: 12.5px/1.5 var(--mono); color: var(--ink); box-shadow: var(--shadow);
+}
+dialog textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+dialog h3 { margin: 14px 0 6px; font-size: 13.5px; }
+dialog pre {
+  margin: 0; max-height: 36vh; overflow: auto; padding: 10px 12px; white-space: pre-wrap;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2);
+  font: 12px/1.5 var(--mono); color: var(--ink-2);
+}
 dialog small { display: block; margin-top: 6px; min-height: 18px; font-size: 12.5px; font-weight: 400; color: var(--mute); }
 .msg { min-height: 18px; margin: -4px 0 16px; font-size: 13px; color: var(--mute); }
 .msg.ok { color: var(--ok); }

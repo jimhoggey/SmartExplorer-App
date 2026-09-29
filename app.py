@@ -42,7 +42,8 @@ def status():
     c = config.load()
     spend = spending(c)
     return {"version": APP_VERSION, "has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
-            "profiles": [{"id": k, "label": v["label"]} for k, v in conventions.PROFILES.items()],
+            "profiles": [{"id": k, "label": v["label"], "description": v["description"]}
+                         for k, v in conventions.PROFILES.items()],
             # the naming style last used, so the next launch starts the same way
             "profile": c.get("profile") if c.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE,
             "spent_month": round(spend.get(time.strftime("%Y-%m"), 0.0), 6),
@@ -82,6 +83,62 @@ def api_settings():
     with LOCK:  # a naming job can be saving its cost at the same moment
         config.save(**{k: v for k, v in request.get_json().items() if k in ("key", "model") and isinstance(v, str)})
     return jsonify(status())
+
+
+PROMPT_LIMIT = 20000  # characters per field; the defaults are under 4,000
+
+
+def prompts():
+    """Each naming style's editable prompt parts: the defaults, what is in use now,
+    and which parts have been edited."""
+    out = []
+    for pid, p in conventions.PROFILES.items():
+        edited = conventions.edits(pid)
+        out.append({"id": pid, "label": p["label"], "description": p["description"],
+                    "defaults": {f: p[f] for f in conventions.FIELDS},
+                    "current": {f: edited.get(f, p[f]) for f in conventions.FIELDS},
+                    "edited": sorted(edited)})
+    return {"profiles": out}
+
+
+def prompt_draft():
+    """The profile and fields posted from the prompt editor, or an error message."""
+    body = request.get_json(silent=True) or {}
+    if body.get("profile") not in conventions.PROFILES:
+        return None, None, "Unknown naming style"
+    fields = {f: body[f] for f in conventions.FIELDS if isinstance(body.get(f), str)}
+    if any(len(v) > PROMPT_LIMIT for v in fields.values()):
+        return None, None, "That prompt is too long (the limit is %d characters)" % PROMPT_LIMIT
+    return body["profile"], fields, None
+
+
+@app.get("/api/prompts")
+def api_prompts():
+    return jsonify(prompts())
+
+
+@app.post("/api/prompts")
+def api_prompts_save():
+    """Save a naming style's prompt parts. Parts left empty, or the same as the
+    default, go back to the default (so later improvements to it still apply)."""
+    profile, fields, err = prompt_draft()
+    if err:
+        return jsonify(error=err), 400
+    with LOCK:
+        saved = config.load().get("prompt_edits")
+        saved = dict(saved) if isinstance(saved, dict) else {}
+        saved[profile] = conventions.only_edits(profile, fields)
+        config.save(prompt_edits={k: v for k, v in saved.items() if v})
+    return jsonify(prompts())
+
+
+@app.post("/api/prompts/preview")
+def api_prompts_preview():
+    """The full prompts the AI would get with these parts, as sent (before the files)."""
+    profile, fields, err = prompt_draft()
+    if err:
+        return jsonify(error=err), 400
+    return jsonify(read=namer.read_prompt(profile, draft=fields), name=namer.name_prompt(profile, draft=fields))
 
 
 @app.post("/api/check-key")

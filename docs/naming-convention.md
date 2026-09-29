@@ -1,6 +1,6 @@
 # Naming convention
 
-Smart Explorer names files with one of two conventions, picked with the **ProPresenter / General** switch. The AI follows the text in [`conventions.py`](../conventions.py); this page is the human-readable version, so a media team can name files the same way by hand.
+Smart Explorer names files with one of two conventions, picked with the **ProPresenter / Photos & files** switch. The AI follows the text in [`conventions.py`](../conventions.py); this page is the human-readable version, so a media team can name files the same way by hand.
 
 ## ProPresenter
 
@@ -48,7 +48,7 @@ Closing - Thanks For Coming
 Background - Purple Particles Loop
 ```
 
-## General (files on disk)
+## Photos & files (everyday files on disk)
 
 Names that make a file easy to find in Finder or File Explorer years later, and that sort sensibly.
 
@@ -75,4 +75,4 @@ Canon EOS R8 - User Manual
 - **Context** (the box under the folder path) applies to one batch: "Sun 12 Oct · Anchored series wk 3 · Ps Dave". The AI uses it to fill gaps, never to invent content that is not on the files.
 - **Names already in the folder** are sent to the AI as taken, so a new giving slide next to last week's `Giving` becomes something like `Giving - Love Offering` rather than a second `Giving`. Any clash it still makes shows as `(2)` in the review grid, before anything is renamed.
 - **Keep order** adds `01 `, `02 `… in the original order, so a deck imported into ProPresenter stays in sequence. It turns itself on when the files are numbered in sequence (`1.png`, `2.png`…). The numbers are added by the app, not the AI, and editing a name never removes its number.
-- To change the convention for good (your church's own words, such as Offering instead of Giving), edit `conventions.py`.
+- To change the convention for good (your church's own words, such as Offering instead of Giving), use *Settings → Naming prompts* in the app, or edit the defaults in `conventions.py`.

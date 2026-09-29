@@ -120,8 +120,8 @@ def _extras(context):
     return "\n\nContext for this batch from the user:\n" + context.strip() if context.strip() else ""
 
 
-def read_prompt(profile, context=""):
-    p = conventions.get(profile)
+def read_prompt(profile, context="", draft=None):
+    p = conventions.get(profile, draft)
     return """%s
 
 %s
@@ -136,8 +136,8 @@ Reply with JSON only: {"files": [{"n": <file number>, "category": "", "subject":
         READ_ROLE, p["reader"], p["categories"], _extras(context))
 
 
-def name_prompt(profile, context=""):
-    p = conventions.get(profile)
+def name_prompt(profile, context="", draft=None):
+    p = conventions.get(profile, draft)
     return """%s
 
 %s%s

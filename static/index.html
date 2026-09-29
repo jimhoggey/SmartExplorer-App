@@ -72,7 +72,7 @@
 
 <div id="drop" hidden><div><b>Drop to load</b><span>Files, or a folder of files</span></div></div>
 
-<div id="toast" role="status" aria-live="polite" hidden><span></span><button id="undo" hidden>Undo</button></div>
+<div id="toast" role="status" aria-live="polite" hidden><span></span></div>
 
 <dialog id="settings" aria-labelledby="settings-title">
   <form method="dialog">
@@ -92,6 +92,10 @@
       <small id="modelnote"></small>
     </label>
     <p id="spend" class="spend"></p>
+    <div class="styles">
+      <div><b>Naming prompts</b><small>See and change what the AI is told for ProPresenter and for Photos &amp; files.</small></div>
+      <button type="button" id="editPrompts">View and edit</button>
+    </div>
     <p id="keymsg" class="msg" aria-live="polite"></p>
     <div class="actions">
       <button type="button" id="test">Test key</button>
@@ -100,6 +104,40 @@
       <button type="button" id="save" class="primary">Save</button>
     </div>
     <p id="version" class="version"></p>
+  </form>
+</dialog>
+
+<dialog id="prompts" class="wide" aria-labelledby="prompts-title">
+  <form method="dialog">
+    <h2 id="prompts-title">Naming prompts</h2>
+    <div id="ptabs" class="seg" role="tablist" aria-label="Naming style"></div>
+    <p id="pdesc" class="lead"></p>
+    <div id="pedit">
+      <label>How to name them <small>The AI names the whole batch with this. {categories} is replaced by the list below.</small>
+        <textarea id="prules" rows="14" spellcheck="false"></textarea>
+      </label>
+      <label>Categories <small>One per line. Each file goes under one of these.</small>
+        <textarea id="pcategories" rows="6" spellcheck="false"></textarea>
+      </label>
+      <label>What to look for in each file <small>Before naming, the AI reads every file with this.</small>
+        <textarea id="preader" rows="7" spellcheck="false"></textarea>
+      </label>
+    </div>
+    <div id="pfull" hidden>
+      <p class="lead">Exactly what the AI is sent before the files. The reply format at the end is fixed, so the app can read the answers.</p>
+      <h3>Step 1: reading each file</h3>
+      <pre id="pread"></pre>
+      <h3>Step 2: naming the batch</h3>
+      <pre id="pname"></pre>
+    </div>
+    <p id="pmsg" class="msg" aria-live="polite"></p>
+    <div class="actions">
+      <button type="button" id="preset">Reset to default</button>
+      <button type="button" id="pshow">Show full prompt</button>
+      <span class="grow"></span>
+      <button type="button" id="pcancel">Cancel</button>
+      <button type="button" id="psave" class="primary">Save</button>
+    </div>
   </form>
 </dialog>
 

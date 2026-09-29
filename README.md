@@ -49,13 +49,13 @@ To choose on evidence rather than benchmarks, run the same folder through severa
 
 The three steps are shown above the files, and the coloured button is always the next one.
 
-1. **Load files:** drop files or a folder onto the window, click **Choose folder**, or paste a path. Choose **ProPresenter** or **General** naming and optionally type context for this batch ("Sun 12 Oct · Anchored series wk 3 · Ps Dave"). **Keep order** puts `01 `, `02 `… in front of the names so a deck stays in sequence; it turns itself on when the files are numbered in sequence (`1.png`, `2.png`… or `Slide1`, `Slide2`…) and can be ticked or unticked at any time, even after naming.
+1. **Load files:** drop files or a folder onto the window, click **Choose folder**, or paste a path. Choose **ProPresenter** (slides and media for ProPresenter) or **Photos & files** (everyday files, date first) and optionally type context for this batch ("Sun 12 Oct · Anchored series wk 3 · Ps Dave"). **Keep order** puts `01 `, `02 `… in front of the names so a deck stays in sequence; it turns itself on when the files are numbered in sequence (`1.png`, `2.png`… or `Slide1`, `Slide2`…) and can be ticked or unticked at any time, even after naming.
 2. **Name with AI:** suggests a name for every file and shows what the batch cost on OpenRouter. Nothing on disk changes yet.
-3. **Check, then rename:** click any name to change it (Escape undoes an edit), then **Rename N files**. **Undo** puts the old names back and keeps the suggestions, so one wrong name doesn't mean naming the batch again. **Clear** empties the list, the context and Keep order for the next set (files on disk are not touched).
+3. **Check, then rename:** click any name to change it (Escape undoes an edit), then **Rename N files**. **Undo** puts the old names back and keeps the suggestions, so one wrong name doesn't mean naming the batch again. After renaming, **Rename more files** empties the list, the context and Keep order for the next set (files on disk are not touched); before that, the same button is **Clear**.
 
 Settings shows what naming has cost this month and in all; *Test key* shows what has been spent on the key as a whole.
 
-The full naming convention, with examples, is in [docs/naming-convention.md](docs/naming-convention.md); to change it for good (say, Offering instead of Giving), edit `conventions.py`.
+The full naming convention, with examples, is in [docs/naming-convention.md](docs/naming-convention.md). To change it for good (say, Offering instead of Giving), open *Settings → Naming prompts → View and edit*. Each style has three parts you can read and change: how to name the files, the categories, and what to look for in each file. *Show full prompt* shows exactly what the AI is sent. Edits are saved on this computer, in `~/.smart-explorer/config.json`, and *Reset to default* puts the original back. The defaults live in `conventions.py`.
 
 Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)` on collisions. Existing files are never overwritten. Undo journals live in `~/.smart-explorer/journal/`.
 

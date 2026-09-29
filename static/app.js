@@ -1,7 +1,8 @@
 const $ = (id) => document.getElementById(id);
-const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "undo", "stat", "drop", "flow", "steps", "guide",
+const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "stat", "drop", "flow", "steps", "guide",
   "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
-  "save"].reduce((o, k) => (o[k] = $(k), o), {});
+  "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
+  "preset", "pshow", "pcancel", "psave"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
 // loadGen: bumped by every load and by Clear, so a scan that finishes after a newer
@@ -24,16 +25,17 @@ async function api(path, body) {
   return data;
 }
 
+// Pop-ups are for errors and for news the screen does not already show;
+// what a batch cost and Undo live in the guide line, once.
 function toast(msg, opts = {}) {
   clearTimeout(toastTimer);
   els.toast.firstElementChild.textContent = msg;
   els.toast.classList.toggle("error", !!opts.error);
-  els.undo.hidden = !opts.undo;
   els.toast.hidden = false;
   els.toast.title = opts.error ? "Click to dismiss" : "";
   // Errors never auto-hide: a silent failure that scrolls past is the thing
   // this app must not do.
-  if (!opts.error) toastTimer = setTimeout(() => (els.toast.hidden = true), opts.undo ? 12000 : 4500);
+  if (!opts.error) toastTimer = setTimeout(() => (els.toast.hidden = true), 4500);
 }
 
 const stem = (name) => name.replace(/\.[^.]+$/, "");
@@ -41,10 +43,10 @@ const inputs = () => [...els.grid.querySelectorAll(".name")];
 const parent = (p) => p.replace(/[\\/][^\\/]*$/, "");
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const dollars = (usd) => "US$" + (usd >= 0.01 ? usd.toFixed(2) : usd.toFixed(4));
-// The month's total is added once other batches are in it too.
+// OpenRouter's own figure for the batch; the month's total once other batches are in it too.
 const costText = (usd) => usd
-  ? `This batch cost ${dollars(usd)} on OpenRouter${status.spent_month > usd + 1e-9 ? ` (${dollars(status.spent_month)} this month)` : ""}.`
-  : status.has_key ? "OpenRouter did not report a cost for this batch." : "";
+  ? `Cost ${dollars(usd)}${status.spent_month > usd + 1e-9 ? ` · ${dollars(status.spent_month)} this month` : ""}`
+  : status.has_key ? "Cost not reported" : "";
 const styleName = (id) => (status.profiles.find((p) => p.id === id) || { label: id }).label;
 
 // Files numbered in sequence (1.png…14.png, Slide1…, Sermon.001…, or names that
@@ -168,18 +170,23 @@ function updateButtons() {
   els.rename.disabled = !changed || naming;
   els.clear.disabled = !items.length || naming;
   els.rename.textContent = changed ? `Rename ${plural(changed, "file")}` : "Rename";
-  // The coloured button is always the next step: Name, then Rename, then Clear.
+  // The coloured button is always the next step: Name, then Rename, then Rename more files.
   const done = !changed && renamedCount > 0 && !naming;
+  els.clear.textContent = done ? "Rename more files" : "Clear";
+  els.clear.title = done ? "Start on the next set of files. The files you renamed keep their new names."
+    : "Empty the list to start on other files. Files on disk are not touched.";
   const restyle = restyled(changed);
   els.name.classList.toggle("primary", (!changed && !done) || restyle);
   els.rename.classList.toggle("primary", changed > 0 && !restyle);
   els.clear.classList.toggle("primary", done);
-  els.stat.innerHTML = items.length
-    ? `<b>${items.length}</b> file${items.length === 1 ? "" : "s"}${changed ? ` · ${changed} to rename` : ""}`
-    : "";
+  els.stat.innerHTML = items.length ? `<b>${items.length}</b> file${items.length === 1 ? "" : "s"}` : "";
   showFlow(changed);
   showNext();
 }
+
+const ORDER_HINT = els.order.parentElement.title;
+const orderHint = () => (els.order.parentElement.title = autoOrder
+  ? "Turned on because these files are numbered in order. " + ORDER_HINT : ORDER_HINT);
 
 // Suggestions made in one style while the other is now picked.
 const restyled = (changed) => changed > 0 && !naming && namedProfile !== null && namedProfile !== profile;
@@ -204,14 +211,13 @@ function showFlow(changed) {
     li.classList.toggle("on", n + 1 === step);
     li.classList.toggle("done", n + 1 < step);
   });
-  const order = autoOrder && els.order.checked ? " <b>Keep order</b> is on because these files are numbered in order." : "";
-  let html = naming ? `Reading ${plural(items.length, "file")} and choosing names…`
-    : restyled(changed) ? `These names are in <b>${styleName(namedProfile)}</b> style. Click <b>Name with AI</b> to redo them in <b>${styleName(profile)}</b> style, or rename them as they are.`
-    : changed ? `<b>Next:</b> check the names below and click any to change it, then <b>Rename ${plural(changed, "file")}</b>. Nothing on disk changes until you do, and you can Undo.`
-    : renamedCount ? `<b>Done:</b> renamed ${plural(renamedCount, "file")}${journal ? ' (<button type="button" class="link" data-undo>Undo</button>)' : ""}. <b>Next:</b> Clear, then load the next set.`
-    : `<b>Next:</b> Name with AI suggests a name in <b>${styleName(profile)}</b> style for every file. Nothing on disk changes yet.${order}`;
+  let html = naming ? `Reading ${plural(items.length, "file")}…`
+    : restyled(changed) ? `These names were made for <b>${styleName(namedProfile)}</b>. Click <b>Name with AI</b> to redo them for <b>${styleName(profile)}</b>.`
+    : changed ? `Check the names (click one to change it), then <b>Rename ${plural(changed, "file")}</b>.`
+    : renamedCount ? `<b>Renamed ${plural(renamedCount, "file")}.</b>${journal ? ' <button type="button" class="mini" data-undo>Undo</button>' : ""}`
+    : "Click <b>Name with AI</b>. Nothing changes on disk until you rename.";
   const cost = naming || lastCost === null ? "" : costText(lastCost);
-  if (cost) html += ` <span class="cost">${cost}</span>`;
+  if (cost) html += ` <span class="cost" title="What naming cost on OpenRouter">${cost}</span>`;
   els.guide.innerHTML = html;
 }
 
@@ -239,6 +245,7 @@ async function load(paths, afterRename = false) {
         namedProfile = null;
         drafts = null;
         els.order.checked = autoOrder = looksNumbered(items);
+        orderHint();
       }
       sources = paths;
       els.folder.classList.remove("bad");
@@ -265,7 +272,6 @@ async function nameAll() {
   naming = true;
   renamedCount = 0;
   lastCost = null;  // the last batch's cost would read as this one's
-  els.undo.hidden = true;  // undoing now would rename files the job is reading
   els.progress.hidden = false;
   els.progress.className = "busy";
   els.progress.firstElementChild.style.width = "0";
@@ -299,11 +305,9 @@ async function nameAll() {
     namedProfile = style;
     drafts = null;
     Object.assign(status, await api("status").catch(() => ({})));  // this month's total, for the guide
-    const bad = errors + missing;
-    toast(why ? why
-      : missing ? `${plural(missing, "file")} ${missing === 1 ? "is" : "are"} no longer there. Load the folder again before renaming.`
-      : errors ? `Named ${items.length - errors} of ${items.length}. ${errors} could not be read.`
-      : `Named ${plural(items.length, "file")}. ${costText(lastCost)}`, { error: bad > 0 });
+    if (errors + missing) toast(why
+      || (missing ? `${plural(missing, "file")} ${missing === 1 ? "is" : "are"} no longer there. Load the folder again before renaming.`
+        : `Named ${items.length - errors} of ${items.length}. ${errors} could not be read.`), { error: true });
   } catch (e) {
     toast(e.message, { error: true });
     inputs().forEach((i) => (i.closest(".card").className = "card"));
@@ -336,8 +340,7 @@ async function renameAll() {
     drafts = r.renamed ? kept : null;
     renamedCount = r.renamed;
     follow(r.moved);
-    const msg = `Renamed ${plural(r.renamed, "file")}`;
-    toast(r.error ? `${msg}, then stopped: ${r.error}` : msg, { undo: r.renamed > 0, error: !!r.error });
+    if (r.error) toast(`Renamed ${plural(r.renamed, "file")}, then stopped: ${r.error}`, { error: true });
     await load(sources, true);
   } catch (e) { toast(e.message, { error: true }); }
 }
@@ -360,7 +363,7 @@ async function undo() {
       if (d) { inp.value = d.name; items[n].named = d.named; kept++; }
     });
     if (kept) refreshCards();
-    toast(`Old names are back on ${plural(r.restored, "file")}.${kept ? " Your suggestions are still below." : ""}`);
+    toast(kept ? "Old names are back. Your suggestions are still below." : "Old names are back.");
   } catch (e) { toast(e.message, { error: true }); }
 }
 
@@ -377,6 +380,7 @@ function clearAll() {
   namedProfile = null;
   drafts = null;
   els.order.checked = autoOrder = false;
+  orderHint();
   els.context.value = "";  // the note was about the set just cleared
   render();
   showEmpty(false);
@@ -394,8 +398,7 @@ function renderProfiles() {
     b.textContent = p.label;
     b.setAttribute("role", "radio");
     b.setAttribute("aria-checked", String(p.id === profile));
-    b.title = p.id === "propresenter" ? "Names for the ProPresenter media bin: Category - Subject - Detail"
-      : "Names for everyday files on disk: date first when the file has one";
+    b.title = p.description;
     b.onclick = () => {
       profile = p.id;
       renderProfiles();
@@ -449,6 +452,87 @@ async function testKey() {
   els.keymsg.className = "msg " + (r.ok ? "ok" : "err");
 }
 
+// Naming prompts: what the AI is told for each naming style, to read and change.
+// Each style has three parts (the categories, what to look for in each file, how
+// to name them); edits to both styles are kept here until Save.
+let promptData = null, promptTab = null, promptDrafts = {};
+const PROMPT_FIELDS = ["categories", "reader", "rules"];
+const catLines = (s) => s.split(/\s+·\s+/).join("\n");  // "A · B" is shown one per line
+const catJoin = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean).join(" · ");
+const sameText = (a, b) => (a || "").trim() === (b || "").trim();
+const promptStyle = (id) => promptData.profiles.find((p) => p.id === id);
+const promptBoxes = () => ({ categories: catJoin(els.pcategories.value), reader: els.preader.value, rules: els.prules.value });
+const promptChanged = (id) => {
+  const d = promptDrafts[id];
+  return !!d && PROMPT_FIELDS.some((f) => !sameText(d[f], promptStyle(id).current[f]));
+};
+
+function showPromptStyle(id) {
+  if (promptTab) promptDrafts[promptTab] = promptBoxes();
+  promptTab = id;
+  const p = promptStyle(id), d = promptDrafts[id] || p.current;
+  els.pcategories.value = catLines(d.categories);
+  els.preader.value = d.reader;
+  els.prules.value = d.rules;
+  els.pdesc.textContent = p.description;
+  say(els.pmsg, "");
+  showPromptTabs();
+  showFullPrompt(false);
+}
+
+function showPromptTabs() {
+  els.ptabs.innerHTML = "";
+  for (const p of promptData.profiles) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", String(p.id === promptTab));
+    b.textContent = p.label;
+    if (p.edited.length) b.insertAdjacentHTML("beforeend", ' <span class="tag">edited</span>');
+    b.onclick = () => showPromptStyle(p.id);
+    els.ptabs.appendChild(b);
+  }
+}
+
+async function showFullPrompt(on) {
+  say(els.pmsg, "");
+  if (on) {
+    const r = await api("prompts/preview", { profile: promptTab, ...promptBoxes() });
+    els.pread.textContent = r.read;
+    els.pname.textContent = r.name;
+  }
+  els.pfull.hidden = !on;
+  els.pedit.hidden = on;
+  els.preset.hidden = on;
+  els.pshow.textContent = on ? "Back to editing" : "Show full prompt";
+}
+
+async function openPrompts() {
+  promptData = await api("prompts");
+  promptDrafts = {};
+  promptTab = null;
+  showPromptStyle(profile);  // start on the style picked on the main screen
+  els.settings.close();
+  els.prompts.showModal();
+}
+
+async function savePrompts() {
+  promptDrafts[promptTab] = promptBoxes();
+  for (const id of Object.keys(promptDrafts)) {
+    if (promptChanged(id)) promptData = await api("prompts", { profile: id, ...promptDrafts[id] });
+  }
+  promptDrafts = {};
+  els.prompts.close();
+  toast("Naming prompts saved");
+}
+
+function closePrompts() {
+  promptDrafts[promptTab] = promptBoxes();
+  if (Object.keys(promptDrafts).some(promptChanged) && !confirm("Close without saving your changes to the prompts?")) return;
+  promptDrafts = {};
+  els.prompts.close();
+}
+
 // Drag and drop. The desktop window hands full paths to onDropPaths; a plain
 // browser only exposes file names, so there the folder has to be pasted.
 let dragDepth = 0;
@@ -480,6 +564,7 @@ els.folder.onchange = () => { if (els.folder.value.trim()) load([els.folder.valu
 els.context.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing && !els.name.disabled) nameAll(); };
 els.order.onchange = () => {  // numbers come and go at once, no need to name again
   autoOrder = false;
+  orderHint();
   refreshCards();
 };
 els.folder.oninput = () => els.folder.classList.remove("bad");
@@ -495,12 +580,26 @@ window.addEventListener("resize", () => { cancelAnimationFrame(fitting); fitting
 els.name.onclick = nameAll;
 els.rename.onclick = renameAll;
 els.clear.onclick = clearAll;
-els.undo.onclick = undo;
 els.guide.onclick = (e) => { if (e.target.matches("[data-undo]")) undo(); };
-els.toast.onclick = (e) => { if (e.target !== els.undo) els.toast.hidden = true; };
+els.toast.onclick = () => (els.toast.hidden = true);
+const guarded = (fn) => () => Promise.resolve().then(fn).catch((e) => toast(e.message, { error: true }));
 els.gear.onclick = () => { fillSettings(); els.settings.showModal(); };
+// A pop-up would sit behind an open dialog, so dialogs show their errors inside.
+const say = (el, msg, ok = true) => { el.textContent = msg; el.className = "msg" + (ok ? "" : " err"); };
+const inDialog = (el, fn) => () => Promise.resolve().then(fn).catch((e) => say(el, e.message, false));
+els.editPrompts.onclick = inDialog(els.keymsg, openPrompts);
+els.pshow.onclick = inDialog(els.pmsg, () => showFullPrompt(els.pfull.hidden));
+els.preset.onclick = () => {  // the defaults go in the boxes; nothing is saved until Save
+  const p = promptStyle(promptTab).defaults;
+  els.pcategories.value = catLines(p.categories);
+  els.preader.value = p.reader;
+  els.prules.value = p.rules;
+  say(els.pmsg, "Defaults restored. Save to keep them.");
+};
+els.psave.onclick = inDialog(els.pmsg, savePrompts);
+els.pcancel.onclick = closePrompts;
+els.prompts.addEventListener("cancel", (e) => { e.preventDefault(); closePrompts(); });  // Escape
 els.cancel.onclick = () => els.settings.close();
-const guarded = (fn) => () => fn().catch((e) => toast(e.message, { error: true }));
 els.save.onclick = guarded(saveSettings);
 els.test.onclick = guarded(testKey);
 els.model.onchange = () => {

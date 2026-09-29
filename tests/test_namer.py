@@ -341,6 +341,25 @@ def test_mock_run():
     assert len(calls) == 2
 
 
+def test_saved_prompt_edits_go_on_top_of_the_defaults():
+    import config
+    config.save(prompt_edits={"propresenter": {"rules": "Name it from {categories} please", "reader": "   ", "bogus": "x"}})
+    base = conventions.PROFILES["propresenter"]
+    p = conventions.get("propresenter")
+    assert p["rules"] == "Name it from %s please" % base["categories"]
+    assert p["reader"] == base["reader"] and "bogus" not in p  # a blank edit means the default
+    n = namer.name_prompt("propresenter")
+    assert "Name it from" in n and "Reply with JSON only" in n  # the reply format is not editable
+    assert conventions.get("general")["rules"] == conventions.PROFILES["general"]["rules"].replace(
+        "{categories}", conventions.PROFILES["general"]["categories"])
+
+
+def test_a_draft_previews_without_saving():
+    r = namer.read_prompt("general", draft={"categories": "Alpha · Beta", "reader": "Look hard."})
+    assert "Alpha · Beta" in r and "Look hard." in r and '{"files"' in r
+    assert conventions.edits("general") == {}
+
+
 def test_check_key(monkeypatch):
     monkeypatch.setattr(namer, "urlopen", lambda req, timeout=None: io.BytesIO(b'{"data": {"label": "sk-1"}}'))
     assert namer.check_key("k") == {"ok": True, "label": "sk-1"}

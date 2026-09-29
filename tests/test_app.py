@@ -30,6 +30,7 @@ def test_status_and_settings(client):
     assert s["has_key"] is False and s["model"] == config.DEFAULT_MODEL
     assert s["models"][0]["id"] == config.DEFAULT_MODEL and s["models"][0]["note"]
     assert [p["id"] for p in s["profiles"]] == ["propresenter", "general"]
+    assert all(p["description"] for p in s["profiles"])
     assert s["profile"] == "propresenter" and "rules" not in s
     assert "keep_order" not in s  # decided per batch in the window, never carried over
     assert s["spent_month"] == 0 and s["spent_total"] == 0
@@ -125,6 +126,38 @@ def test_spend_adds_up_per_month(client, folder, monkeypatch):
     assert s["spent_month"] == pytest.approx(0.025) and s["spent_total"] == pytest.approx(1.525)
     app.record_spend(0)  # a batch that cost nothing leaves the file alone
     assert config.load()["spend"][time.strftime("%Y-%m")] == pytest.approx(0.025)
+
+
+def test_prompts_view_edit_and_reset(client):
+    import namer
+    styles = client.get("/api/prompts").get_json()["profiles"]
+    pp = styles[0]
+    assert pp["id"] == "propresenter" and pp["label"] == "ProPresenter" and pp["description"]
+    assert pp["current"] == pp["defaults"] and pp["edited"] == []
+    assert styles[1]["label"] == "Photos & files" and "date" in styles[1]["description"]
+    rules = pp["defaults"]["rules"].replace("Giving", "Offering")
+    pp = client.post("/api/prompts", json={"profile": "propresenter", "rules": rules,
+                                           "reader": pp["defaults"]["reader"], "categories": ""}).get_json()["profiles"][0]
+    assert pp["edited"] == ["rules"] and pp["current"]["rules"] == rules
+    assert config.load()["prompt_edits"] == {"propresenter": {"rules": rules}}  # only what differs is kept
+    assert "Offering" in namer.name_prompt("propresenter")
+    client.post("/api/prompts", json={"profile": "propresenter", "rules": "  "})  # emptied: back to the default
+    assert client.get("/api/prompts").get_json()["profiles"][0]["edited"] == []
+    assert config.load()["prompt_edits"] == {}
+
+
+def test_prompts_reject_bad_input(client):
+    assert client.post("/api/prompts", json={"profile": "../x", "rules": "a"}).status_code == 400
+    r = client.post("/api/prompts", json={"profile": "general", "rules": "x" * 20001})
+    assert r.status_code == 400 and "too long" in r.get_json()["error"]
+
+
+def test_prompt_preview(client):
+    r = client.post("/api/prompts/preview", json={"profile": "general", "rules": "Call everything {categories}",
+                                                  "categories": "Thing"}).get_json()
+    assert "Call everything Thing" in r["name"] and "Thing" in r["read"]
+    assert '"names"' in r["name"] and '"files"' in r["read"]  # the reply format stays the app's own
+    assert "prompt_edits" not in config.load()
 
 
 def test_name_unknown_profile_falls_back(client, folder):

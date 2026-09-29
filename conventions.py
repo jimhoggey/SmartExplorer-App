@@ -1,21 +1,27 @@
-"""The naming conventions the AI follows, one per profile.
+"""The naming conventions the AI follows, one per profile (naming style).
 
-This is the file to edit to change how files get named. Each profile has:
-  label       shown in the UI
-  categories  the fixed words names start with; shared by both steps
-  reader      what the vision step should look for in each file (stage 1)
-  rules       the convention the naming step applies to the whole batch (stage 2);
-              {categories} is replaced with the list above
+Each profile has:
+  label        shown in the app
+  description  when to use it, shown in the app
+  categories   the fixed words names start with; shared by both steps
+  reader       what the vision step should look for in each file (stage 1)
+  rules        the convention the naming step applies to the whole batch (stage 2);
+               {categories} is replaced with the list above
 
-To change how your church's files are named for good (say, Offering instead of
-Giving), edit the rules below. For one batch only, type it in the app's context box.
+These are the defaults. categories, reader and rules can also be changed in the
+app (Settings, Naming prompts); those edits are saved in the config file and
+applied on top of the defaults here. For one batch only, type it in the app's
+context box.
 """
+import config
 
 DEFAULT_PROFILE = "propresenter"
+FIELDS = ("categories", "reader", "rules")  # the parts that can be edited in the app
 
 PROFILES = {
     "propresenter": {
         "label": "ProPresenter",
+        "description": "For slides, backgrounds and videos going into ProPresenter. Names start with what each file is for (Giving, Sermon, Worship and so on), so they group together and are easy to find in the media bin.",
         "categories": "Welcome (welcome and pre-service slides) · Closing (end of service: thanks for coming, see you next week, have a great week) · Countdown (countdown timers and videos) · Announcement (events, notices, registrations, promos) · Giving (offering, tithes, bank details, give online) · Sermon (series art, sermon title, points, quotes, questions) · Scripture (Bible verses that are not part of a sermon set) · Worship (song lyrics or song title slides; Subject is the song title) · Prayer · Communion · Baptism · Connect (new here, next steps, connect cards, sign-up QR codes) · Kids · Youth · Background (stills and motion loops with no meaningful text; Subject describes the look) · Lower Third (name and title straps, usually on a transparent background) · Bumper (intro, outro and transition videos) · Social (socials, follow us) · Other",
         "reader": """These files are slides, graphics and videos for church services, run in ProPresenter.
 - Read every piece of text exactly as written. Do not correct, complete or invent text.
@@ -68,7 +74,8 @@ Closing - Thanks For Coming
 Background - Purple Particles Loop""",
     },
     "general": {
-        "label": "General",
+        "label": "Photos & files",
+        "description": "For everyday files on your computer: photos, screenshots, receipts, invoices and letters. Names start with the date, so a folder sorts by date.",
         "categories": "Photo · Screenshot · Invoice · Receipt · Statement · Letter · Form · Ticket · Certificate · Report · Minutes · Manual · Flyer · Poster · Logo · Artwork · Document · Other",
         "reader": """These are everyday files on a computer: photos, screenshots, scanned or downloaded documents, flyers and artwork.
 - Read the important text exactly as written: titles, organisation and business names, document numbers, dates, totals.
@@ -103,6 +110,27 @@ Canon EOS R8 - User Manual""",
 }
 
 
-def get(profile):
-    p = PROFILES.get(profile) or PROFILES[DEFAULT_PROFILE]
+def resolve(profile):
+    return profile if profile in PROFILES else DEFAULT_PROFILE
+
+
+def only_edits(profile, fields):
+    """The fields that change the default: non-empty text that differs from it.
+    An emptied field means "use the default"."""
+    base = PROFILES[resolve(profile)]
+    return {k: v for k, v in fields.items()
+            if k in FIELDS and isinstance(v, str) and v.strip() and v.strip() != base[k].strip()}
+
+
+def edits(profile):
+    """The edits saved from the app for a profile."""
+    saved = config.load().get("prompt_edits")
+    got = saved.get(resolve(profile)) if isinstance(saved, dict) else None
+    return only_edits(profile, got) if isinstance(got, dict) else {}
+
+
+def get(profile, draft=None):
+    """A profile as the AI gets it: the defaults, with the saved edits (or, for a
+    preview, the draft ones) on top, and the categories put into the rules."""
+    p = dict(PROFILES[resolve(profile)], **(edits(profile) if draft is None else only_edits(profile, draft)))
     return dict(p, rules=p["rules"].replace("{categories}", p["categories"]))
