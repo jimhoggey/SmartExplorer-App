@@ -132,6 +132,23 @@ def test_new_file_is_renamed_after_the_wait_and_said(folder):
     assert "Renamed welcome.png -> Name welcome.png" in log
 
 
+def test_started_from_the_window_it_does_not_wait(folder):
+    png(folder / "welcome.png")
+    fake = Fake()
+    w = watch.Watcher(clock=Clock(), say=fake.say, read=fake.read, name=fake.name, check=fake.check, startup=False)
+    run(w, w.clock, 75)  # the start-up wait (3 min) is for when the computer starts, not for now
+    assert files(folder) == ["Name welcome.png"]
+    assert fake.said[0] == "Smart Explorer is watching Sunday Media. New files will be renamed as they arrive."
+
+
+def test_the_quiet_minute_says_what_it_is_waiting_for(folder):
+    fake = Fake()
+    w = watch.Watcher(clock=Clock(), say=fake.say, read=fake.read, name=fake.name, check=fake.check, startup=False)
+    png(folder / "welcome.png")
+    run(w, w.clock, 20)  # downloaded and settled, but more files may be on the way
+    assert watch.read_status()["message"] == "Found 1 new file. Renaming in 45 s, in case more are on the way."
+
+
 def test_files_arriving_during_the_wait_are_one_batch(folder):
     fake = Fake()
     w, clock = start(fake)

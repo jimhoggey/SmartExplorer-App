@@ -324,6 +324,8 @@ dialog label.check input { display: inline-block; width: 16px; margin: 0; }
 dialog .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 #wFields { padding-top: 4px; }
 .wstatus { margin: 0 0 12px; font-size: 13px; color: var(--mute); }
+.wnote { margin: -6px 0 14px; font-size: 12.5px; color: var(--mute); }
+.wnote:empty { display: none; }
 .wstatus button.link {
   padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;

@@ -1,5 +1,5 @@
 ; Windows installer for Smart Explorer, built by CI with:
-;   iscc /DAppVersion=0.5.0 packaging\windows-installer.iss
+;   iscc /DAppVersion=0.5.1 packaging\windows-installer.iss
 ; Installs for the current user (no administrator needed, which suits church
 ; computers), adds a Start menu entry, an optional desktop icon and an uninstaller.
 
@@ -48,8 +48,9 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; Tasks: deskt
 Filename: "{app}\{#AppName}.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 ; An update started from inside the app runs Setup with /RELAUNCH=1: open the app again afterwards.
 Filename: "{app}\{#AppName}.exe"; Flags: nowait; Check: Relaunch
-; Background renaming starts with Windows (Settings, Watch a folder): start it again after an update.
-Filename: "{app}\{#AppName}.exe"; Parameters: "--watch"; Flags: nowait; Check: WatchesAtStartup
+; Background renaming starts with Windows (Settings, Watch a folder): start it again after an update,
+; straight away (--now): the computer is already up, so there is no start-up wait.
+Filename: "{app}\{#AppName}.exe"; Parameters: "--watch --now"; Flags: nowait; Check: WatchesAtStartup
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#AppName}.exe"""; Flags: runhidden; RunOnceId: "StopSmartExplorer"
