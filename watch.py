@@ -420,3 +420,113 @@ class Watcher:
             return True
         e["next"] = now + RETRY[e["count"] - 1]
         return False
+
+
+def _lock(f):
+    if os.name == "nt":
+        import msvcrt
+        f.seek(0)
+        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def take_lock():
+    """The one-watcher lock, held until release() or the process ends (a crash leaves
+    no stale lock), or None when another watcher holds it."""
+    path = watch_dir() / "lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(path, "a+")
+    try:
+        _lock(f)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+def release(f):
+    if os.name == "nt":
+        import msvcrt
+        try:
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+    f.close()
+
+
+def running():
+    f = take_lock()
+    if f is None:
+        return True
+    release(f)
+    return False
+
+
+def _stop_file():
+    return watch_dir() / "stop"
+
+
+def request_stop():
+    _stop_file().parent.mkdir(parents=True, exist_ok=True)
+    _stop_file().write_text("stop")
+
+
+def _take_stop():
+    try:
+        _stop_file().unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def stop_and_wait(timeout=10.0, sleep=time.sleep):
+    """Ask a running watcher to stop and wait for it. Returns True once none is running."""
+    if not running():
+        return True
+    request_stop()
+    for _ in range(int(timeout / 0.25)):
+        sleep(0.25)
+        if not running():
+            return True
+    return False
+
+
+def spawn(popen=subprocess.Popen):
+    """Start a watcher that outlives the window."""
+    _take_stop()  # a stop asked of an earlier watcher must not stop this one
+    if sys.platform == "win32":
+        kw = {"creationflags": getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    else:
+        kw = {"start_new_session": True}
+    popen(autostart.watch_command(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+          stderr=subprocess.DEVNULL, close_fds=True, **kw)
+
+
+def main(sleep=time.sleep, watcher=None):
+    """Watch until stopped or switched off. Returns at once when another watcher runs."""
+    lock = take_lock()
+    if lock is None:
+        return 0
+    _take_stop()
+    w = watcher or Watcher()
+    log("Started")
+    try:
+        while True:
+            if _take_stop():
+                if hasattr(w, "mark_stopped"):
+                    w.mark_stopped()
+                log("Stopped")
+                break
+            try:
+                if not w.tick():
+                    log("Watching is off: stopped")
+                    break
+            except Exception as e:  # one bad look must not end the watching
+                log("Error: %r" % (e,))
+            sleep(POLL)
+    finally:
+        release(lock)
+    return 0
