@@ -59,19 +59,23 @@ def test_each_computer_gets_its_own_installer():
     assert updater.asset_name("0.4.0", "linux", "x86_64") is None
 
 
-def test_where_the_app_is_installed(tmp_path, monkeypatch):
+def test_where_the_app_is_installed(tmp_path):
+    assert updater.installed_app(frozen=False)[0] is None  # from source: git pull instead
+    assert updater.installed_app(True, str(tmp_path / "Smart Explorer.exe"), "win32") == (tmp_path, None)
+    assert updater.installed_app(True, str(tmp_path / "smart-explorer"), "linux")[0] is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Mac paths; this code only runs on a Mac")
+def test_where_the_mac_app_is_installed(tmp_path, monkeypatch):
     exe = tmp_path / "Smart Explorer.app" / "Contents" / "MacOS" / "Smart Explorer"
     exe.parent.mkdir(parents=True)
     exe.write_text("")
-    assert updater.installed_app(frozen=False)[0] is None  # from source: git pull instead
     assert updater.installed_app(True, str(exe), "darwin") == (tmp_path / "Smart Explorer.app", None)
-    assert updater.installed_app(True, str(tmp_path / "Smart Explorer.exe"), "win32") == (tmp_path, None)
     moved = "/private/var/folders/x/AppTranslocation/ABC/d/Smart Explorer.app/Contents/MacOS/Smart Explorer"
     assert "Applications" in updater.installed_app(True, moved, "darwin")[1]
     assert updater.installed_app(True, "/Volumes/Smart Explorer/Smart Explorer.app/Contents/MacOS/x", "darwin")[0] is None
     monkeypatch.setattr(updater.os, "access", lambda p, mode: False)
     assert "cannot replace" in updater.installed_app(True, str(exe), "darwin")[1]
-    assert updater.installed_app(True, "/usr/bin/smart-explorer", "linux")[0] is None
 
 
 def test_check_finds_a_newer_release_and_reuses_the_answer(github):
@@ -125,10 +129,10 @@ def test_download_checks_size_and_sha256(monkeypatch, tmp_path):
 def test_launch_runs_the_installer_detached(tmp_path):
     started = []
     popen = lambda args, **kw: started.append((args, kw))
-    dmg = tmp_path / "SmartExplorer-9.9.9-mac-apple-silicon.dmg"
-    updater.launch(dmg, Path("/Applications/Smart Explorer.app"), "darwin", popen)
+    dmg, app = tmp_path / "SmartExplorer-9.9.9-mac-apple-silicon.dmg", Path("/Applications/Smart Explorer.app")
+    updater.launch(dmg, app, "darwin", popen)
     args, kw = started[0]
-    assert args[:2] == ["/bin/sh", str(tmp_path / "update.sh")] and args[3:] == [str(dmg), "/Applications/Smart Explorer.app"]
+    assert args[:2] == ["/bin/sh", str(tmp_path / "update.sh")] and args[3:] == [str(dmg), str(app)]
     assert (tmp_path / "update.sh").read_text() == updater.MAC_SCRIPT and kw["start_new_session"]
     exe = tmp_path / "SmartExplorer-9.9.9-windows-setup.exe"
     updater.launch(exe, tmp_path, "win32", popen)
