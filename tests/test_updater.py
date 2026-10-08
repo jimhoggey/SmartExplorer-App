@@ -201,3 +201,14 @@ def test_mac_script_swaps_the_app_or_keeps_the_old_one(tmp_path, copy_works):
     assert not (app.parent / "Smart Explorer.app.new").exists() and not (app.parent / "Smart Explorer.app.old").exists()
     assert ("updated" if copy_works else "could not replace") in out.stdout
     assert log.read_text().splitlines()[-1] == "open %s" % app  # the app opens again either way
+
+
+def test_install_stops_background_renaming_first(monkeypatch, tmp_path):
+    import watch
+    order = []
+    monkeypatch.setattr(updater, "download", lambda asset, folder, progress: tmp_path / "setup.exe")
+    monkeypatch.setattr(watch, "stop_and_wait", lambda timeout=10.0: order.append("stop") or True)
+    monkeypatch.setattr(updater, "launch", lambda installer, app: order.append("launch"))
+    monkeypatch.setattr(updater.threading, "Timer", lambda *a, **k: type("T", (), {"start": lambda self: None})())
+    updater._install({"size": 1}, tmp_path, "9.9.9")
+    assert order == ["stop", "launch"]

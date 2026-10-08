@@ -40,16 +40,40 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\dist\{#AppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppName}.exe"
+; The AppUserModelID lets background renaming's notifications carry the app's name and icon (notify.APP_ID).
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; AppUserModelID: "jimhoggey.SmartExplorer"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppName}.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 ; An update started from inside the app runs Setup with /RELAUNCH=1: open the app again afterwards.
 Filename: "{app}\{#AppName}.exe"; Flags: nowait; Check: Relaunch
+; Background renaming starts with Windows (Settings, Watch a folder): start it again after an update.
+Filename: "{app}\{#AppName}.exe"; Parameters: "--watch"; Flags: nowait; Check: WatchesAtStartup
+
+[UninstallRun]
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#AppName}.exe"""; Flags: runhidden; RunOnceId: "StopSmartExplorer"
+
+[UninstallDelete]
+; autostart.NAME
+Type: files; Name: "{userstartup}\Smart Explorer (background).lnk"
 
 [Code]
 function Relaunch: Boolean;
 begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
+function WatchesAtStartup: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{userstartup}\Smart Explorer (background).lnk'));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
+begin
+  { Background renaming has no window, so closing applications can miss it. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "{#AppName}.exe"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Result := '';
 end;

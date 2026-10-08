@@ -14,6 +14,11 @@ on:
       - "requirements.txt"
       - "version.py"
       - "desktop.py"
+      - "watch.py"
+      - "known.py"
+      - "notify.py"
+      - "autostart.py"
+      - "scripts/smoke_watch.py"
   workflow_dispatch:
 permissions:
   contents: write
@@ -58,6 +63,8 @@ jobs:
             fi
           done
           echo "app did not respond within 80s"; exit 1
+      - name: Smoke test background renaming (--watch renames new files)
+        run: python scripts/smoke_watch.py "dist/Smart Explorer.app/Contents/MacOS/Smart Explorer"
       - name: Build the .dmg (drag Smart Explorer to Applications)
         run: |
           DMG="SmartExplorer-$VERSION-mac-${{ matrix.arch }}.dmg"
@@ -131,6 +138,9 @@ jobs:
             fi
           done
           echo "app did not respond within 80s"; exit 1
+      - name: Smoke test background renaming (--watch renames new files)
+        shell: bash
+        run: python scripts/smoke_watch.py "dist/Smart Explorer/Smart Explorer.exe"
       - name: Build the installer
         shell: pwsh
         run: |
