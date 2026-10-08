@@ -2,7 +2,8 @@ const $ = (id) => document.getElementById(id);
 const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "clear", "progress", "empty", "emptyTitle", "emptyText", "grid", "toast", "stat", "drop", "flow", "steps", "guide",
   "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
-  "preset", "pshow", "pcancel", "psave"].reduce((o, k) => (o[k] = $(k), o), {});
+  "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
+  "checkUpdates", "updateMsg"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
 // loadGen: bumped by every load and by Clear, so a scan that finishes after a newer
@@ -268,6 +269,7 @@ async function nameAll() {
   // name what that load shows, not the list it is about to replace.
   if (loading) await loading;
   if (naming || !items.length) return;
+  if (updating()) return toast("Smart Explorer is updating and will reopen in a moment.", { error: true });
   const style = profile;
   naming = true;
   renamedCount = 0;
@@ -431,6 +433,7 @@ function fillSettings() {
   els.keymsg.textContent = "";
   els.keymsg.className = "msg";
   els.version.textContent = status.version ? `Smart Explorer ${status.version}` : "";
+  els.updateMsg.textContent = "";
   showModelNote();
 }
 
@@ -533,6 +536,60 @@ function closePrompts() {
   els.prompts.close();
 }
 
+// Updates. The window asks GitHub once when it opens (Settings can ask again); a
+// newer release shows a banner, and Update now downloads, installs and reopens.
+let update = {}, updateLater = false, updateTimer = 0;
+const UPDATING = ["downloading", "installing", "restarting"];
+const updating = () => UPDATING.includes((update.progress || {}).state);
+
+function showUpdate(u) {
+  update = u;
+  const p = u.progress || {}, busy = updating();
+  const show = busy || p.state === "error" || !!u.failed || (u.newer && !updateLater);
+  els.update.hidden = !show;
+  if (!show) return;
+  const v = u.latest || u.failed;
+  const retry = p.state === "error" || (u.failed && !busy);
+  els.updateText.innerHTML = p.state === "downloading" ? `Downloading Smart Explorer ${v}… ${p.total ? Math.floor((p.done / p.total) * 100) : 0}%`
+    : busy ? `Installing Smart Explorer ${v}. It will close and open again.`
+    : p.state === "error" ? `The update didn't finish: ${escapeHtml(p.error || "")}`
+    : u.failed ? `The update to ${u.failed} didn't install.`
+    : `<b>Smart Explorer ${v}</b> is available.` + (u.can_install ? "" : ` <small>${escapeHtml(u.why_not || "")}</small>`);
+  els.updateGo.hidden = busy || !u.can_install;
+  els.updateGo.textContent = retry ? "Try again" : "Update now";
+  els.updateLink.hidden = busy;
+  els.updateLink.href = u.page;
+  els.updateLink.textContent = u.can_install && !retry ? "What's new" : "Download it";
+  els.updateLater.hidden = busy;
+}
+const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+async function startUpdate() {
+  if (naming) return toast("Wait for naming to finish, then update.", { error: true });
+  try {
+    const r = await api("update", {});
+    showUpdate({ ...update, progress: r.progress });
+    clearInterval(updateTimer);
+    updateTimer = setInterval(async () => {
+      try {
+        showUpdate(await api("update"));
+        if (!updating()) clearInterval(updateTimer);
+      } catch (e) { /* the app is closing to install */ }
+    }, 700);
+  } catch (e) { toast(e.message, { error: true }); }
+}
+
+async function checkUpdates() {
+  const note = (msg, ok = true) => { els.updateMsg.textContent = msg; els.updateMsg.style.color = ok ? "" : "var(--err)"; };
+  note("Checking…");
+  try {
+    const u = await api("update?force=1");
+    updateLater = false;
+    showUpdate(u);
+    note(u.error || (u.newer ? `Version ${u.latest} is available: see the bar at the top.` : "You have the latest version."), !u.error);
+  } catch (e) { note(e.message, false); }
+}
+
 // Drag and drop. The desktop window hands full paths to onDropPaths; a plain
 // browser only exposes file names, so there the folder has to be pasted.
 let dragDepth = 0;
@@ -578,6 +635,9 @@ new IntersectionObserver(([e]) => { barInView = e.isIntersecting; showNext(); },
 let fitting = 0;
 window.addEventListener("resize", () => { cancelAnimationFrame(fitting); fitting = requestAnimationFrame(fitAll); });
 els.name.onclick = nameAll;
+els.updateGo.onclick = startUpdate;
+els.updateLater.onclick = () => { updateLater = true; els.update.hidden = true; };
+els.checkUpdates.onclick = checkUpdates;
 els.rename.onclick = renameAll;
 els.clear.onclick = clearAll;
 els.guide.onclick = (e) => { if (e.target.matches("[data-undo]")) undo(); };
@@ -622,4 +682,5 @@ api("status").then((s) => {
   showEmpty(false);
   fillSettings();
   if (!s.has_key) els.settings.showModal();
+  api("update").then(showUpdate).catch(() => {});  // offline: no banner, no fuss
 });

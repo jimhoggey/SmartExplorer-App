@@ -43,10 +43,12 @@ jobs:
         run: |
           [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match version.py ($VERSION)"; exit 1; }
       - run: pyinstaller --noconfirm smart_explorer.spec
-      - name: Smoke test the app (starts, serves the page, reads PNG, HEIC and PDF)
+      - name: Smoke test the app (starts, serves the page, reads PNG, HEIC and PDF, reaches OpenRouter)
         env:
           SMART_EXPLORER_HEADLESS: "1"
           SMART_EXPLORER_PORT: "8765"
+          SSL_CERT_FILE: /nonexistent/cert.pem  # no build-machine certificates, as on a volunteer's Mac
+          SSL_CERT_DIR: /nonexistent
         run: |
           "dist/Smart Explorer.app/Contents/MacOS/Smart Explorer" &
           for i in $(seq 1 40); do
@@ -77,6 +79,19 @@ jobs:
           test -L "/tmp/se/Smart Explorer.app/Contents/Frameworks/Python.framework/Versions/Current"
           codesign -v "/tmp/se/Smart Explorer.app"
           hdiutil detach /tmp/se
+      - name: Check an in-app update replaces an installed copy
+        run: |
+          mkdir -p /tmp/apps
+          ditto "dist/Smart Explorer.app" "/tmp/apps/Smart Explorer.app"
+          touch "/tmp/apps/Smart Explorer.app/Contents/old-version"
+          python -c "import updater; print(updater.MAC_SCRIPT, end='')" > /tmp/update.sh
+          cp "$DMG" /tmp/update.dmg  # the script deletes the .dmg it installed
+          true & gone=$!; wait $gone  # the app has already quit
+          sh /tmp/update.sh "$gone" /tmp/update.dmg "/tmp/apps/Smart Explorer.app" --no-open | tee /tmp/update.out
+          grep -q "^updated" /tmp/update.out
+          test ! -e "/tmp/apps/Smart Explorer.app/Contents/old-version"
+          test ! -e "/tmp/apps/Smart Explorer.app.old" && test ! -e "/tmp/apps/Smart Explorer.app.new"
+          codesign -v "/tmp/apps/Smart Explorer.app"
       - uses: actions/upload-artifact@v4
         with:
           name: mac-${{ matrix.arch }}
@@ -100,11 +115,13 @@ jobs:
         run: |
           [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "Tag $GITHUB_REF_NAME does not match version.py ($VERSION)"; exit 1; }
       - run: pyinstaller --noconfirm smart_explorer.spec
-      - name: Smoke test the app (starts, serves the page, reads PNG, HEIC and PDF)
+      - name: Smoke test the app (starts, serves the page, reads PNG, HEIC and PDF, reaches OpenRouter)
         shell: bash
         env:
           SMART_EXPLORER_HEADLESS: "1"
           SMART_EXPLORER_PORT: "8765"
+          SSL_CERT_FILE: C:/nonexistent/cert.pem
+          SSL_CERT_DIR: C:/nonexistent
         run: |
           "dist/Smart Explorer/Smart Explorer.exe" &
           for i in $(seq 1 40); do
@@ -120,7 +137,7 @@ jobs:
           choco install innosetup -y --no-progress
           iscc "/DAppVersion=$env:VERSION" packaging\windows-installer.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
-      - name: Check the installer installs, starts and uninstalls
+      - name: Check the installer installs, starts, updates and uninstalls
         shell: pwsh
         run: |
           $setup = "dist\SmartExplorer-$env:VERSION-windows-setup.exe"
@@ -138,6 +155,18 @@ jobs:
           }
           Stop-Process -Id $app.Id -Force
           if (-not $up) { throw "The installed app did not start" }
+          # An update from inside the app runs Setup over the install with /RELAUNCH=1,
+          # which must open the app again (it inherits these settings).
+          $env:SMART_EXPLORER_PORT = "8767"
+          Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/CURRENTUSER", "/RELAUNCH=1" -Wait
+          $up = $false
+          foreach ($i in 1..40) {
+            Start-Sleep -Seconds 2
+            try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8767/api/status | Out-Null; $up = $true; break } catch {}
+          }
+          Get-Process -Name "Smart Explorer" -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $up) { throw "Setup did not reopen the app after updating" }
+          Start-Sleep -Seconds 2
           Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
       - uses: actions/upload-artifact@v4
         with:

@@ -1,9 +1,12 @@
-"""Release smoke test: the packaged app must read PNG, HEIC and PDF, not just start.
+"""Release smoke test: the packaged app must read PNG, HEIC and PDF, and reach
+OpenRouter over HTTPS, not just start.
 
     python scripts/smoke_formats.py http://127.0.0.1:8765
 
 A missing native library (libheif, pdfium) in a PyInstaller build only shows up
-at runtime, as blank thumbnails and unreadable files.
+at runtime, as blank thumbnails and unreadable files. Missing certificates show
+up as every OpenRouter request failing; CI starts the app with the build
+machine's certificate paths pointed nowhere, as on a volunteer's computer.
 """
 import json
 import sys
@@ -24,4 +27,11 @@ req = urllib.request.Request(sys.argv[1] + "/api/scan", data=json.dumps({"paths"
 with urllib.request.urlopen(req, timeout=60) as r:
     got = {i["name"]: bool(i["thumb"]) for i in json.load(r)["items"]}
 print(got)
-sys.exit(0 if got == {"a.png": True, "b.heic": True, "c.pdf": True} else 1)
+# A made-up key: OpenRouter answering "HTTP 401" proves the secure connection worked.
+req = urllib.request.Request(sys.argv[1] + "/api/check-key", data=b'{"key": "sk-or-smoke-test"}',
+                             headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req, timeout=60) as r:
+    https = json.load(r)
+print(https)
+sys.exit(0 if got == {"a.png": True, "b.heic": True, "c.pdf": True}
+         and "OpenRouter returned HTTP" in str(https.get("error")) else 1)

@@ -1,5 +1,5 @@
 ; Windows installer for Smart Explorer, built by CI with:
-;   iscc /DAppVersion=0.3.0 packaging\windows-installer.iss
+;   iscc /DAppVersion=0.4.0 packaging\windows-installer.iss
 ; Installs for the current user (no administrator needed, which suits church
 ; computers), adds a Start menu entry, an optional desktop icon and an uninstaller.
 
@@ -45,3 +45,11 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; Tasks: deskt
 
 [Run]
 Filename: "{app}\{#AppName}.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; An update started from inside the app runs Setup with /RELAUNCH=1: open the app again afterwards.
+Filename: "{app}\{#AppName}.exe"; Flags: nowait; Check: Relaunch
+
+[Code]
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

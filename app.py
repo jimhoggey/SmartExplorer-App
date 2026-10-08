@@ -14,6 +14,7 @@ import namer
 import prep
 import renamer
 import scanner
+import updater
 from version import APP_VERSION
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
@@ -140,6 +141,18 @@ def api_prompts_preview():
     if err:
         return jsonify(error=err), 400
     return jsonify(read=namer.read_prompt(profile, draft=fields), name=namer.name_prompt(profile, draft=fields))
+
+
+@app.get("/api/update")
+def api_update():
+    """Whether a newer release is out (?force=1 asks GitHub again), and how an update in progress is going."""
+    return jsonify(dict(updater.check(force=request.args.get("force") == "1"), progress=dict(updater.STATE)))
+
+
+@app.post("/api/update")
+def api_update_start():
+    err = updater.start()
+    return (jsonify(error=err), 400) if err else jsonify(progress=dict(updater.STATE))
 
 
 @app.post("/api/check-key")

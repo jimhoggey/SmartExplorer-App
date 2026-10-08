@@ -199,3 +199,19 @@ def test_name_tells_the_namer_what_is_already_in_the_folder(client, folder, monk
         time.sleep(0.05)
     assert seen["names"] == ["b.png"]
     assert seen["existing"] == ["a", "Giving", "notes"]
+
+
+def test_update_endpoints(client, monkeypatch):
+    import updater
+    asked = []
+    monkeypatch.setattr(updater, "check", lambda force=False: asked.append(force) or {"current": "0.3.0", "latest": "0.4.0", "newer": True})
+    monkeypatch.setattr(updater, "STATE", {"state": "idle", "done": 0, "total": 0, "error": None})
+    r = client.get("/api/update").get_json()
+    assert r["newer"] and r["progress"]["state"] == "idle"
+    client.get("/api/update?force=1")
+    assert asked == [False, True]
+    monkeypatch.setattr(updater, "start", lambda: "There is no update to install.")
+    r = client.post("/api/update")
+    assert r.status_code == 400 and "no update" in r.get_json()["error"]
+    monkeypatch.setattr(updater, "start", lambda: None)
+    assert client.post("/api/update").get_json()["progress"]["state"] == "idle"

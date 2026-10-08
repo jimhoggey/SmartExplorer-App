@@ -12,13 +12,17 @@ Download the latest version from the [releases page](../../releases/latest).
 
 1. Download the `.dmg` for your Mac: `mac-apple-silicon` for Macs with an M1 or later chip, `mac-intel` for older Intel Macs (Apple menu → *About This Mac* shows which).
 2. Open it and drag **Smart Explorer** onto **Applications**.
-3. The first time you open it, macOS will say it can't verify the app, because it isn't signed with a paid Apple developer certificate. Click *Done*, then open *System Settings → Privacy & Security*, scroll down and click **Open Anyway** next to Smart Explorer. You only do this once.
+3. The first time you open it, macOS will say it can't verify the app, because it isn't signed with a paid Apple developer certificate. Click *Done*, then open *System Settings → Privacy & Security*, scroll down and click **Open Anyway** next to Smart Explorer. Or, in Terminal: `xattr -dr com.apple.quarantine "/Applications/Smart Explorer.app"`. You only do this once: updates installed from inside the app open without it.
 
 **Windows** (10 or 11)
 
 1. Download `SmartExplorer-…-windows-setup.exe` and run it. It installs for your user account, so no administrator password is needed.
 2. If Windows shows "Windows protected your PC", click *More info → Run anyway* (the installer isn't signed with a paid certificate).
 3. Start Smart Explorer from the Start menu.
+
+## Updates
+
+When Smart Explorer opens, it checks GitHub for a newer release. If there is one, a bar at the top offers **Update now**: the app downloads the installer for your computer, checks it matches the release (size and SHA-256), installs it and reopens. On a Mac the app must be in Applications; on Windows an install for all users asks for an administrator. *Settings → Check for updates* checks again. Run from source, the bar just links to the release (update with `git pull`). Versions before 0.4.0 can't update themselves, so install 0.4.0 by hand once.
 
 ## Get an OpenRouter key
 

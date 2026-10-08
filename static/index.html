@@ -28,6 +28,14 @@
   </button>
 </header>
 
+<div id="update" class="update" role="status" hidden>
+  <span id="updateText"></span>
+  <span class="spacer"></span>
+  <a id="updateLink" target="_blank" rel="noopener"></a>
+  <button id="updateGo" class="primary" hidden>Update now</button>
+  <button id="updateLater" class="ghost">Later</button>
+</div>
+
 <div class="page">
   <section class="panel">
     <div class="bar">
@@ -103,7 +111,8 @@
       <button type="button" id="cancel">Cancel</button>
       <button type="button" id="save" class="primary">Save</button>
     </div>
-    <p id="version" class="version"></p>
+    <p class="version"><span id="version"></span> · <button type="button" id="checkUpdates" class="link">Check for updates</button>
+      <span id="updateMsg"></span></p>
   </form>
 </dialog>
 
