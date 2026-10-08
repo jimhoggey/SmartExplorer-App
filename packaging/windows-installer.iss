@@ -1,5 +1,5 @@
 ; Windows installer for Smart Explorer, built by CI with:
-;   iscc /DAppVersion=0.4.0 packaging\windows-installer.iss
+;   iscc /DAppVersion=0.5.0 packaging\windows-installer.iss
 ; Installs for the current user (no administrator needed, which suits church
 ; computers), adds a Start menu entry, an optional desktop icon and an uninstaller.
 
