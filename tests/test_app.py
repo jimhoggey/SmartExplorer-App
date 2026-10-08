@@ -55,6 +55,15 @@ def test_scan(client, folder):
     assert all(i["thumb"] and i["kind"] == "image" for i in items)
 
 
+def test_scan_says_whether_files_are_numbered(client, folder, tmp_path):
+    assert client.post("/api/scan", json={"folder": str(folder)}).get_json()["numbered"] is False
+    deck = tmp_path / "deck"
+    deck.mkdir()
+    for n in ("1.png", "2.png", "3.png"):
+        Image.new("RGB", (40, 20), "blue").save(deck / n)
+    assert client.post("/api/scan", json={"folder": str(deck)}).get_json()["numbered"] is True
+
+
 def test_scan_dropped_files_and_folders(client, folder, tmp_path):
     other = tmp_path / "other"
     other.mkdir()

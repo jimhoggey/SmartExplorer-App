@@ -168,7 +168,7 @@ def api_scan():
     items = scanner.scan(*paths)
     with ThreadPoolExecutor(8) as ex:
         thumbs = list(ex.map(thumb, items))
-    return jsonify(items=[dict(i, thumb=t) for i, t in zip(items, thumbs)])
+    return jsonify(items=[dict(i, thumb=t) for i, t in zip(items, thumbs)], numbered=scanner.looks_numbered(items))
 
 
 @app.post("/api/name")

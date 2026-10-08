@@ -181,3 +181,41 @@ def test_watch_settings_defaults_and_clamps(tmp_path, monkeypatch):
     assert config.watch_settings() == config.WATCH_DEFAULTS
     config.save(watch="nonsense")
     assert config.watch_settings() == config.WATCH_DEFAULTS
+
+
+def _named(*names, folder="/x/Slides"):
+    return [{"path": "%s/%s" % (folder, n), "name": n} for n in names]
+
+
+@pytest.mark.parametrize("names", [
+    ["%d.png" % n for n in range(1, 11)],
+    ["Slide1.png", "Slide2.png", "Slide3.png"],
+    ["Sermon.001.png", "Sermon.002.png"],
+    ["01 Welcome.png", "02 Giving.png"],
+    ["1.png", "2.png", "4.png"],  # gaps allowed: deleted slides
+])
+def test_looks_numbered(names):
+    assert scanner.looks_numbered(_named(*names))
+
+
+@pytest.mark.parametrize("names", [
+    ["IMG_4521.jpg", "IMG_4522.jpg"],  # a camera's numbers, not a deck
+    ["Giving.png", "Sermon.png"],
+    ["1.png"],  # one file has no order to keep
+    ["1.png", "1 copy.png"],
+    ["1-a.png", "1-b.png"],  # the same number twice
+    ["1.png", "2.png", "Giving.png"],
+])
+def test_looks_numbered_rejects(names):
+    assert not scanner.looks_numbered(_named(*names))
+
+
+def test_looks_numbered_checks_each_folder():
+    assert scanner.looks_numbered(_named("1.png", "2.png") + _named("Slide1.png", "Slide2.png", folder="/y"))
+    assert not scanner.looks_numbered(_named("1.png", "2.png") + _named("a.png", "b.png", folder="/y"))
+
+
+def test_order_numbers_per_folder_with_at_least_two_digits():
+    assert scanner.order_numbers(_named("a", "b", "c")) == ["01", "02", "03"]
+    assert scanner.order_numbers(_named(*map(str, range(100))))[:2] == ["001", "002"]
+    assert scanner.order_numbers(_named("a", "b") + _named("c", folder="/y")) == ["01", "02", "01"]

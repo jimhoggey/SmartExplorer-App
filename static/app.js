@@ -50,24 +50,6 @@ const costText = (usd) => usd
   : status.has_key ? "Cost not reported" : "";
 const styleName = (id) => (status.profiles.find((p) => p.id === id) || { label: id }).label;
 
-// Files numbered in sequence (1.png…14.png, Slide1…, Sermon.001…, or names that
-// already start 01, 02…): renamed without numbers they would sort A to Z in
-// ProPresenter, so Keep order starts on for them.
-function looksNumbered(list) {
-  const folders = {};
-  for (const it of list) (folders[parent(it.path)] = folders[parent(it.path)] || []).push(stem(it.name));
-  return list.length > 1 && Object.values(folders).every((stems) => {
-    const lead = stems.map((x) => (x.match(/^(\d+)[\s._-]/) || [])[1]);
-    const tails = stems.map((x) => x.replace(/\d+(?=\D*$)/, "#"));
-    const nums = lead.every(Boolean) ? lead
-      : tails.every((t) => t === tails[0] && t.includes("#")) ? stems.map((x) => x.match(/(\d+)\D*$/)[1])
-      : null;
-    // Small, distinct numbers: a deck (gaps allowed, for deleted slides), not a camera's IMG_4521.
-    const n = (nums || []).map(Number);
-    return n.length > 0 && new Set(n).size === n.length && Math.max(...n) <= 2 * n.length;
-  });
-}
-
 // Names wrap instead of being cut off, so every card shows its whole name.
 // scrollHeight leaves out the border, which border-box heights include.
 const fullHeight = (b) => b.scrollHeight + b.offsetHeight - b.clientHeight;
@@ -237,15 +219,16 @@ async function load(paths, afterRename = false) {
   const gen = ++loadGen;
   const run = (async () => {
     try {
-      const found = (await api("scan", { paths })).items;
+      const scan = await api("scan", { paths });
       if (gen !== loadGen) return;
-      items = found;
+      items = scan.items;
       if (!afterRename) {  // new files: a fresh start, with nothing carried over from the last set
         lastCost = null;
         renamedCount = 0;
         namedProfile = null;
         drafts = null;
-        els.order.checked = autoOrder = looksNumbered(items);
+        // Numbered in sequence (1.png…, Slide1…): Keep order starts on (scanner.looks_numbered).
+        els.order.checked = autoOrder = !!scan.numbered;
         orderHint();
       }
       sources = paths;
