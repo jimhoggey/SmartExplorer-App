@@ -62,6 +62,7 @@ def test_mac_login_item_is_a_launch_agent(monkeypatch, tmp_path):
     import plistlib
     monkeypatch.setattr(autostart.sys, "platform", "darwin")
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # where Windows (CI) finds the home folder
     assert not autostart.enabled()
     assert autostart.enable() is None and autostart.enabled()
     agent = tmp_path / "Library" / "LaunchAgents" / (autostart.MAC_LABEL + ".plist")
