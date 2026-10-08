@@ -307,6 +307,27 @@ dialog small { display: block; margin-top: 6px; min-height: 18px; font-size: 12.
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
 #updateMsg { display: block; margin-top: 4px; color: var(--mute); }
+
+/* ---------- background renaming ---------- */
+.watchbar {
+  display: flex; align-items: center; gap: 10px; padding: 7px 24px;
+  background: var(--ok-soft); border-bottom: 1px solid #abefc6; font-size: 13.5px; color: var(--ink-2);
+}
+.watchbar .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.watchbar.problem { background: var(--err-soft); border-bottom-color: #fecdca; }
+.watchbar.problem .dot { background: var(--err); }
+.watchbar button { padding: 6px 12px; }
+dialog fieldset.watch { margin: 0 0 16px; padding: 10px 14px 2px; border: 1px solid var(--line); border-radius: var(--r-sm); }
+dialog fieldset.watch legend { padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+dialog label.check { display: flex; margin-bottom: 12px; padding: 8px 12px; font-size: 13px; }
+dialog label.check input { display: inline-block; width: 16px; margin: 0; }
+dialog .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+#wFields { padding-top: 4px; }
+.wstatus { margin: 0 0 12px; font-size: 13px; color: var(--mute); }
+.wstatus button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
 #updateMsg:empty { display: none; }
 
 /* ---------- update banner ---------- */

@@ -242,8 +242,19 @@ def api_undo():
     return jsonify(restored=len(moved), moved=moved)
 
 
+SPAWNED = {"at": 0.0}  # when the window last started background renaming
+STARTING = 15  # seconds a new background copy may take before it counts as not running
+
+
+def spawn_watcher():
+    watch.spawn()
+    SPAWNED["at"] = time.time()
+
+
 def watch_state():
-    return {"settings": config.watch_settings(), "running": watch.running(), "status": watch.read_status(),
+    running = watch.running()
+    return {"settings": config.watch_settings(), "running": running, "status": watch.read_status(),
+            "starting": not running and time.time() - SPAWNED["at"] < STARTING,
             "spent_month": round(watch.spent_month(), 6), "can_autostart": autostart.available()}
 
 
@@ -296,7 +307,7 @@ def api_watch_save():
     else:
         autostart.disable()
     if new["enabled"] and not watch.running():
-        watch.spawn()
+        spawn_watcher()
     elif not new["enabled"] and watch.running():
         watch.request_stop()
     out = watch_state()
@@ -308,7 +319,7 @@ def api_watch_save():
 @app.post("/api/watch/start")
 def api_watch_start():
     if config.watch_settings()["enabled"] and not watch.running():
-        watch.spawn()
+        spawn_watcher()
     return jsonify(watch_state())
 
 

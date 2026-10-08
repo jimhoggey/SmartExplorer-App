@@ -266,6 +266,12 @@ def test_turning_watching_on_records_the_folder_and_starts(client, watcher, fold
     assert watcher["stop"] == 1 and watcher["auto"][-1] == "off"
 
 
+def test_a_just_started_watcher_says_starting(client, watcher, folder):
+    w = client.post("/api/watch", json={"enabled": True, "folder": str(folder)}).get_json()
+    assert w["running"] is False and w["starting"] is True  # the new process needs a moment
+    assert client.get("/api/watch").get_json()["starting"] is True
+
+
 def test_watching_a_missing_folder_is_refused(client, watcher, tmp_path):
     r = client.post("/api/watch", json={"enabled": True, "folder": str(tmp_path / "nope")})
     assert r.status_code == 400 and not config.watch_settings()["enabled"]

@@ -3,7 +3,8 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
-  "checkUpdates", "updateMsg"].reduce((o, k) => (o[k] = $(k), o), {});
+  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchStart", "wOn", "wFields", "wFolder", "wPick", "wProfile",
+  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wStatus", "wLog"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
 // loadGen: bumped by every load and by Clear, so a scan that finishes after a newer
@@ -421,6 +422,7 @@ function fillSettings() {
 }
 
 async function saveSettings() {
+  if (!(await saveWatch())) return;
   const body = { model: els.model.value || els.custom.value.trim() || status.model };
   if (els.key.value.trim()) body.key = els.key.value.trim();
   status = await api("settings", body);
@@ -573,6 +575,78 @@ async function checkUpdates() {
   } catch (e) { note(e.message, false); }
 }
 
+// Background renaming (Settings, Watch a folder). Settings sets it up; the bar under
+// the header says what it is doing, read from the background copy's status file.
+// watchFilled: Settings shows the saved values, so Save may send them back.
+let watchState = null, watchTimer = 0, watchFilled = false;
+
+function watchLine(w) {
+  if (!w.running) return w.starting ? "Starting…" : "Background renaming isn't running.";
+  return (w.status && w.status.state !== "stopped" && w.status.message) || "Starting…";
+}
+
+function showWatch(w) {
+  watchState = w;
+  const on = w.settings.enabled, down = !w.running && !w.starting;
+  els.watchbar.hidden = !on;
+  els.watchbar.classList.toggle("problem", on && (down || (w.running && (w.status || {}).state === "paused")));
+  els.watchText.textContent = on ? watchLine(w) : "";
+  els.watchStart.hidden = !on || !down;
+  els.wStatus.textContent = on ? watchLine(w) : "";
+  clearTimeout(watchTimer);
+  if (on) watchTimer = setTimeout(refreshWatch, 5000);
+}
+
+async function refreshWatch() {
+  try { showWatch(await api("watch")); } catch (e) { /* the app is closing */ }
+}
+
+function fillWatch() {
+  const w = watchState;
+  watchFilled = !!w;
+  if (!w) return;
+  const s = w.settings;
+  els.wOn.checked = s.enabled;
+  els.wFolder.value = s.folder;
+  els.wProfile.innerHTML = "";
+  for (const p of status.profiles) els.wProfile.add(new Option(p.label, p.id));
+  els.wProfile.value = s.profile;
+  els.wWait.value = s.startup_wait_min;
+  els.wLimit.value = s.monthly_limit_usd;
+  els.wSpent.textContent = w.spent_month ? `${dollars(w.spent_month)} spent this month in the background.`
+    : "Nothing spent in the background this month.";
+  els.wAutoRow.hidden = !w.can_autostart;
+  els.wAuto.checked = s.autostart;
+  els.wStatus.textContent = s.enabled ? watchLine(w) : "";
+  els.wFields.hidden = !els.wOn.checked;
+}
+
+function watchDraft() {
+  return {
+    enabled: els.wOn.checked, folder: els.wFolder.value.trim(), profile: els.wProfile.value,
+    startup_wait_min: Math.round(Number(els.wWait.value) || 0), monthly_limit_usd: Number(els.wLimit.value) || 0,
+    autostart: els.wAuto.checked,
+  };
+}
+
+// Saves Watch a folder when it changed. Returns false when the user backed out.
+async function saveWatch() {
+  if (!watchState || !watchFilled) return true;
+  const d = watchDraft(), s = watchState.settings;
+  if (!Object.keys(d).some((k) => d[k] !== s[k])) return true;
+  if (d.enabled && (!s.enabled || d.folder !== s.folder)) {
+    const { count } = await api("watch/preview", { folder: d.folder });
+    const left = count === 0 ? "" : count === 1 ? "\n\nThe file already in it will be left as it is."
+      : `\n\nThe ${count} files already in it will be left as they are.`;
+    const msg = "Smart Explorer will rename new files in this folder by itself, even with this window closed." + left;
+    if (!confirm(msg)) return false;
+  }
+  const w = await api("watch", d);
+  showWatch(w);
+  if (w.error) throw new Error(w.error);
+  return true;
+}
+
 // Drag and drop. The desktop window hands full paths to onDropPaths; a plain
 // browser only exposes file names, so there the folder has to be pasted.
 let dragDepth = 0;
@@ -626,7 +700,13 @@ els.clear.onclick = clearAll;
 els.guide.onclick = (e) => { if (e.target.matches("[data-undo]")) undo(); };
 els.toast.onclick = () => (els.toast.hidden = true);
 const guarded = (fn) => () => Promise.resolve().then(fn).catch((e) => toast(e.message, { error: true }));
-els.gear.onclick = () => { fillSettings(); els.settings.showModal(); };
+els.gear.onclick = async () => {
+  fillSettings();
+  watchFilled = false;
+  try { watchState = await api("watch"); } catch (e) { watchState = null; /* the rest of Settings still works */ }
+  fillWatch();
+  if (!els.settings.open) els.settings.showModal();
+};
 // A pop-up would sit behind an open dialog, so dialogs show their errors inside.
 const say = (el, msg, ok = true) => { el.textContent = msg; el.className = "msg" + (ok ? "" : " err"); };
 const inDialog = (el, fn) => () => Promise.resolve().then(fn).catch((e) => say(el, e.message, false));
@@ -643,7 +723,14 @@ els.psave.onclick = inDialog(els.pmsg, savePrompts);
 els.pcancel.onclick = closePrompts;
 els.prompts.addEventListener("cancel", (e) => { e.preventDefault(); closePrompts(); });  // Escape
 els.cancel.onclick = () => els.settings.close();
-els.save.onclick = guarded(saveSettings);
+els.save.onclick = inDialog(els.keymsg, saveSettings);  // a folder that can't be found is said in the dialog
+els.wOn.onchange = () => (els.wFields.hidden = !els.wOn.checked);
+els.wPick.onclick = inDialog(els.keymsg, async () => {
+  const { folder } = await api("pick-folder");
+  if (folder) els.wFolder.value = folder;
+});
+els.wLog.onclick = inDialog(els.keymsg, () => api("watch/log", {}));
+els.watchStart.onclick = guarded(async () => showWatch(await api("watch/start", {})));
 els.test.onclick = guarded(testKey);
 els.model.onchange = () => {
   els.custom.hidden = !!els.model.value;
@@ -664,6 +751,7 @@ api("status").then((s) => {
   renderProfiles();
   showEmpty(false);
   fillSettings();
-  if (!s.has_key) els.settings.showModal();
+  if (!s.has_key) els.gear.click();  // the same way as the button, so every section is filled
   api("update").then(showUpdate).catch(() => {});  // offline: no banner, no fuss
+  api("watch").then(showWatch).catch(() => {});
 });
