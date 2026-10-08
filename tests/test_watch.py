@@ -33,10 +33,11 @@ def png(path, color="red"):
 class Fake:
     """Stands in for OpenRouter and notifications: every file is named "Name <stem>"."""
 
-    def __init__(self, fail_read=(), local=(), fail_name=0, refuse=None, check=None, during_read=None):
+    def __init__(self, fail_read=(), local=(), fail_name=0, refuse=None, check=None, during_read=None, name_refuse=None):
         self.reads, self.names, self.said, self.checks = [], [], [], 0
         self.fail_read, self.local, self.fail_name = set(fail_read), set(local), fail_name
         self.refuse, self.check_result, self.during_read = refuse, check, during_read
+        self.name_refuse = name_refuse
 
     def read(self, key, model, items, profile):
         self.reads.append([it["name"] for it in items])
@@ -56,6 +57,11 @@ class Fake:
 
     def name(self, key, model, items, descs, profile, existing):
         self.names.append([it["name"] for it in items])
+        if self.name_refuse:
+            status, self.name_refuse = self.name_refuse, None
+            return {"results": [{"id": it["id"], "path": it["path"], "proposed": "raw words", "error": "HTTP %d" % status}
+                                for it in items], "cost": 0.0, "name_error": "AI naming failed (HTTP %d)" % status,
+                    "name_status": status}
         if self.fail_name:
             self.fail_name -= 1
             return {"results": [{"id": it["id"], "path": it["path"], "proposed": "raw words", "error": "AI naming failed"}
@@ -257,10 +263,12 @@ def test_a_new_folder_starts_afresh(folder, tmp_path):
     run(w, clock, 200)
     other = tmp_path / "Other"
     other.mkdir()
-    png(other / "x.png")
+    png(other / "old.png")  # no record of this folder: what is there is left alone
     config.save(watch=dict(config.watch_settings(), folder=str(other)))
+    run(w, clock, 10)
+    png(other / "x.png")
     run(w, clock, 100)
-    assert fake.reads == [["x.png"]] and files(other) == ["Name x.png"]
+    assert fake.reads == [["x.png"]] and files(other) == ["Name x.png", "old.png"]
 
 
 def test_spend_is_kept_per_month_in_its_own_file(folder):

@@ -58,6 +58,7 @@ def status():
 
 
 NOT_FOUND = "Can't find that folder. Check the spelling, or use Choose folder."
+CANT_OPEN = "Can't open that folder (%s). Check Google Drive is running, or choose another folder."
 
 
 def paths_or_none():
@@ -272,7 +273,10 @@ def api_watch_preview():
     folder = (request.get_json(silent=True) or {}).get("folder")
     if not _is_folder(folder):
         return jsonify(error=NOT_FOUND), 400
-    return jsonify(count=len(known.visible(folder)))
+    try:
+        return jsonify(count=len(known.visible(folder)))
+    except OSError as e:
+        return jsonify(error=CANT_OPEN % (e.strerror or e)), 400
 
 
 @app.post("/api/watch")
@@ -297,7 +301,10 @@ def api_watch_save():
         if not _is_folder(new["folder"]):
             return jsonify(error=NOT_FOUND), 400
         if not old["enabled"] or not known.same_folder(old["folder"], new["folder"]):
-            known.record_folder(new["folder"])
+            try:
+                known.record_folder(new["folder"])
+            except OSError as e:
+                return jsonify(error=CANT_OPEN % (e.strerror or e)), 400
     with LOCK:
         config.save(watch=new)
     new = config.watch_settings()

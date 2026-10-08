@@ -69,7 +69,15 @@ its print are unknown. So:
 
 **Turning watching on** records every file already in the folder in the known
 list, without reading them, so they are left as they are. When the window renames
-files inside the watched folder, it adds them to the known list too.
+files inside the watched folder, it adds them to the known list too. If the
+watcher ever finds **no record** for its folder (known.json deleted, damaged by a
+power cut, or the folder changed by hand), it records the folder the same way
+first: it never renames a whole existing folder.
+
+A waiting file that someone **renames by hand** (same print, new name) is recorded
+and left alone. A known file's **name is forgotten** once the file has been gone
+from the folder for 10 minutes, so next week's `1.png` or `Untitled design.png` is
+new again; a file back within that time (Drive replacing it) stays known.
 
 **Waiting for Drive.** A new file is **ready** when its size and modified time
 have not changed for **10 s** and it can be opened for reading. (In Drive's
@@ -135,16 +143,25 @@ consistently, look-alikes are told apart and Keep order can number it.
   1,000 slides with the recommended model). Before each batch, when this month's
   background spend has reached the limit, the watcher pauses and notifies. A
   batch can go over by at most one batch (≤200 files).
-- **Folder not found** (Drive not ready, signed out, drive letter missing): the
-  watcher waits quietly until the start-up wait is over, plus 2 minutes, then
-  notifies and keeps checking every minute.
+- **Folder not found or can't be opened** (Drive not ready, signed out, restarting,
+  drive letter missing): the watcher waits quietly until the start-up wait is over
+  plus 2 minutes, and mid-run until the folder has been gone for 2 minutes (so a
+  Drive restart during a service says nothing), then notifies once. A folder it
+  can't list is a problem ("can't open"), never an empty folder.
+- **A local failure after paying** (a full disk, an undo record that can't be
+  written): the paid descriptions are kept first, spending that can't be recorded
+  is logged, and anything else that goes wrong in the batch counts as a paid
+  attempt, so it can never repeat every 5 seconds.
+- **A refusal while naming** (402 or 401 after the files were read) counts like a
+  refusal while reading: no attempt is used, the descriptions wait.
 - Each problem notifies **once**, and again only after it has cleared and come back.
 
 **Spending records.** The watcher records its own spend in
 `~/.smart-explorer/watch/spend.json` (`{"2026-10": 0.12}`), which only it
 writes. The window's cost display in Settings adds it to its own totals. So the
-watcher never writes `config.json`, and the two processes never write the same
-file.
+watcher never writes `config.json`. `known.json` is the one file both write (the
+window on turn-on and after its own renames, the watcher after each batch), always
+atomically.
 
 **Safe settings.** `config.save` writes a temporary file and swaps it in with
 `os.replace`, so the watcher can never read a half-written `config.json` (it

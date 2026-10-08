@@ -482,6 +482,16 @@ def test_name_described_reports_a_naming_failure(monkeypatch):
     assert out["name_error"] and "429" in out["results"][0]["error"]
 
 
+def test_a_refused_naming_request_keeps_its_http_status(monkeypatch):
+    monkeypatch.setattr(namer, "urlopen", raise_(HTTPError("https://x", 402, "no", {}, io.BytesIO(b"no credit"))))
+    names, err, cost = namer.name_all("k", "m", DESCS)
+    assert "402" in err and err.status == 402
+    out = namer.name_described("k", "m", ITEMS[:1], [dict(DESC)])
+    assert out["name_status"] == 402
+    monkeypatch.setattr(namer, "chat", fake_chat())
+    assert namer.name_described("k", "m", ITEMS[:1], [dict(DESC)])["name_status"] is None
+
+
 def test_check_key_reports_the_http_status(monkeypatch):
     monkeypatch.setattr(namer, "urlopen", raise_(HTTPError("https://x", 401, "no", {}, io.BytesIO(b"bad key"))))
     r = namer.check_key("k")

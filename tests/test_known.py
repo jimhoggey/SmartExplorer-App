@@ -1,5 +1,6 @@
 import os
 
+import pytest
 from PIL import Image
 
 import known
@@ -66,7 +67,18 @@ def test_folders_are_kept_apart_and_a_missing_folder_is_empty(tmp_path):
     png(b / "x.png")
     known.record_folder(a)
     assert known.new_files(a) == [] and names(known.new_files(b)) == ["x.png"]
-    assert known.new_files(tmp_path / "missing") == []
+    assert known.has_record(a) and not known.has_record(b)
+    with pytest.raises(OSError):  # a folder that can't be listed is not an empty one
+        known.new_files(tmp_path / "missing")
+
+
+def test_forget_names_keeps_prints(tmp_path):
+    png(tmp_path / "1.png")
+    known.record_folder(tmp_path)
+    assert known.names(tmp_path) == {"1.png"}
+    known.forget_names(tmp_path, {"1.png"})
+    assert known.names(tmp_path) == set()
+    assert known.new_files(tmp_path) == []  # still known by its print
 
 
 def test_same_folder(tmp_path):

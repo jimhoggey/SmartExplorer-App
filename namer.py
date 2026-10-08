@@ -68,6 +68,15 @@ class NamerError(Exception):
         self.status, self.cost = status, cost
 
 
+class Failure(str):
+    """Why naming failed, as text, also carrying OpenRouter's HTTP status (or None)."""
+
+    def __new__(cls, text, status=None):
+        out = super().__new__(cls, text)
+        out.status = status
+        return out
+
+
 def _request(url, key, data=None, timeout=90, tries=3):
     req = Request(url, data=data, headers={**HEADERS, "Authorization": "Bearer " + key})
     for attempt in range(tries):
@@ -294,7 +303,8 @@ def name_all(key, model, descs, profile=conventions.DEFAULT_PROFILE, context="",
     except Exception as e:
         cost += getattr(e, "cost", 0.0)
         names = [None] * len(descs)
-        err = "AI naming failed (%s). These are the raw words on each file, not chosen names." % e
+        err = Failure("AI naming failed (%s). These are the raw words on each file, not chosen names." % e,
+                      getattr(e, "status", None))
     fallback = lambda d: clean(d.get("subject") or str(d.get("text") or "")[:60], d["original"]) or Path(d["original"]).stem
     return _dedupe((clean(n, d["original"]) or fallback(d) for n, d in zip(names, descs)), existing), err, cost
 
@@ -341,8 +351,9 @@ def name_described(key, model, items, descs, on_progress=None, profile=conventio
                    existing=()):
     """The naming step, for items read_all described (descs in item order). Returns
     {"results": [{id, path, proposed, error?}], "cost": USD, "name_error": None or why
-    naming failed}. An item whose description failed keeps its own name. When naming
-    failed, every proposed name is the file's raw words, not a chosen name."""
+    naming failed, "name_status": OpenRouter's HTTP status for that failure, or None}.
+    An item whose description failed keeps its own name. When naming failed, every
+    proposed name is the file's raw words, not a chosen name."""
     notify = on_progress or (lambda *a: None)
     ok = [{**d, "i": i, "original": it["name"]} for i, (it, d) in enumerate(zip(items, descs)) if "error" not in d]
     names, name_err, cost = name_all(key, model, ok, profile, context, existing=existing) if ok else ([], None, 0.0)
@@ -357,7 +368,7 @@ def name_described(key, model, items, descs, on_progress=None, profile=conventio
             r["error"] = name_err
         notify(it["id"], "named", name)
         out.append(r)
-    return {"results": out, "cost": cost, "name_error": name_err}
+    return {"results": out, "cost": cost, "name_error": name_err, "name_status": getattr(name_err, "status", None)}
 
 
 def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, context="",

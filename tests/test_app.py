@@ -272,6 +272,19 @@ def test_a_just_started_watcher_says_starting(client, watcher, folder):
     assert client.get("/api/watch").get_json()["starting"] is True
 
 
+def test_a_folder_that_cannot_be_opened_is_refused(client, watcher, folder, monkeypatch):
+    import known
+
+    def denied(f):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(known, "visible", denied)
+    r = client.post("/api/watch/preview", json={"folder": str(folder)})
+    assert r.status_code == 400 and "open" in r.get_json()["error"]
+    r = client.post("/api/watch", json={"enabled": True, "folder": str(folder)})
+    assert r.status_code == 400 and not config.watch_settings()["enabled"] and watcher["spawn"] == 0
+
+
 def test_watching_a_missing_folder_is_refused(client, watcher, tmp_path):
     r = client.post("/api/watch", json={"enabled": True, "folder": str(tmp_path / "nope")})
     assert r.status_code == 400 and not config.watch_settings()["enabled"]

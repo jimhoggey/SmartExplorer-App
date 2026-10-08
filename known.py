@@ -52,13 +52,28 @@ def _save(data, folder, names, prints):
     config.write_json(_path(), data)
 
 
+def has_record(folder):
+    """Whether the folder was recorded (when watching was turned on for it)."""
+    return isinstance(_load().get(_key(folder)), dict)
+
+
+def names(folder):
+    return _entry(_load(), folder)[0]
+
+
+def forget_names(folder, gone):
+    """Forget these names (not prints): the files are no longer in the folder, so a
+    new file given the same name later, say Canva's default, is new."""
+    data = _load()
+    known_names, prints = _entry(data, folder)
+    _save(data, folder, known_names - set(gone), prints)
+
+
 def visible(folder):
     """The files background renaming would name: the folder's top level only, no
-    hidden files, no Office or Google Drive temporary files, only types it reads."""
-    try:
-        files = [p for p in Path(folder).iterdir() if p.is_file()]
-    except OSError:
-        return []
+    hidden files, no Office or Google Drive temporary files, only types it reads.
+    Raises OSError when the folder cannot be listed: that is not an empty folder."""
+    files = [p for p in Path(folder).iterdir() if p.is_file()]
     return sorted((p for p in files if scanner.kind(p) and not p.name.startswith((".", "~$"))), key=scanner.natural_key)
 
 
