@@ -158,7 +158,9 @@ jobs:
           # An update from inside the app runs Setup over the install with /RELAUNCH=1,
           # which must open the app again (it inherits these settings).
           $env:SMART_EXPLORER_PORT = "8767"
-          Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/CURRENTUSER", "/RELAUNCH=1" -Wait
+          # Not -Wait: that also waits for what Setup starts, and the reopened app keeps running.
+          $update = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/CURRENTUSER", "/RELAUNCH=1" -PassThru
+          if (-not $update.WaitForExit(300000)) { throw "Setup did not finish updating" }
           $up = $false
           foreach ($i in 1..40) {
             Start-Sleep -Seconds 2
