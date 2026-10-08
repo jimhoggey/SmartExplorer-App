@@ -1,5 +1,7 @@
 import os
 import re
+import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -8,13 +10,16 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
+import autostart
 import config
 import conventions
+import known
 import namer
 import prep
 import renamer
 import scanner
 import updater
+import watch
 from version import APP_VERSION
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
@@ -41,17 +46,19 @@ def record_spend(usd):
 
 def status():
     c = config.load()
-    spend = spending(c)
+    spend, background = spending(c), watch.spending()  # background renaming keeps its own record
+    month = time.strftime("%Y-%m")
     return {"version": APP_VERSION, "has_key": bool(c.get("key")), "model": config.model(), "models": config.MODELS,
             "profiles": [{"id": k, "label": v["label"], "description": v["description"]}
                          for k, v in conventions.PROFILES.items()],
             # the naming style last used, so the next launch starts the same way
             "profile": c.get("profile") if c.get("profile") in conventions.PROFILES else conventions.DEFAULT_PROFILE,
-            "spent_month": round(spend.get(time.strftime("%Y-%m"), 0.0), 6),
-            "spent_total": round(sum(spend.values()), 6)}
+            "spent_month": round(spend.get(month, 0.0) + background.get(month, 0.0), 6),
+            "spent_total": round(sum(spend.values()) + sum(background.values()), 6)}
 
 
 NOT_FOUND = "Can't find that folder. Check the spelling, or use Choose folder."
+CANT_OPEN = "Can't open that folder (%s). Check Google Drive is running, or choose another folder."
 
 
 def paths_or_none():
@@ -168,7 +175,7 @@ def api_scan():
     items = scanner.scan(*paths)
     with ThreadPoolExecutor(8) as ex:
         thumbs = list(ex.map(thumb, items))
-    return jsonify(items=[dict(i, thumb=t) for i, t in zip(items, thumbs)])
+    return jsonify(items=[dict(i, thumb=t) for i, t in zip(items, thumbs)], numbered=scanner.looks_numbered(items))
 
 
 @app.post("/api/name")
@@ -221,6 +228,9 @@ def api_name_poll(job):
 def api_rename():
     pairs = renamer.plan(request.get_json()["items"])
     out = renamer.apply(pairs)
+    w = config.watch_settings()
+    if w["enabled"] and w["folder"]:  # renamed here, so background renaming leaves them alone
+        known.add_paths(w["folder"], [new for _, new in pairs[:out["renamed"]]])
     return jsonify(dict(out, moved=pairs[:out["renamed"]]))
 
 
@@ -231,6 +241,105 @@ def api_undo():
         return jsonify(error="Nothing to undo"), 404
     moved = renamer.undo(jid)
     return jsonify(restored=len(moved), moved=moved)
+
+
+SPAWNED = {"at": 0.0}  # when the window last started background renaming
+STARTING = 15  # seconds a new background copy may take before it counts as not running
+
+
+def spawn_watcher():
+    watch.spawn()
+    SPAWNED["at"] = time.time()
+
+
+def watch_state():
+    running = watch.running()
+    return {"settings": config.watch_settings(), "running": running, "status": watch.read_status(),
+            "starting": not running and time.time() - SPAWNED["at"] < STARTING,
+            "spent_month": round(watch.spent_month(), 6), "can_autostart": autostart.available()}
+
+
+def _is_folder(f):
+    return isinstance(f, str) and bool(f) and Path(f).is_absolute() and Path(f).is_dir()
+
+
+@app.get("/api/watch")
+def api_watch():
+    return jsonify(watch_state())
+
+
+@app.post("/api/watch/preview")
+def api_watch_preview():
+    folder = (request.get_json(silent=True) or {}).get("folder")
+    if not _is_folder(folder):
+        return jsonify(error=NOT_FOUND), 400
+    try:
+        return jsonify(count=len(known.visible(folder)))
+    except OSError as e:
+        return jsonify(error=CANT_OPEN % (e.strerror or e)), 400
+
+
+@app.post("/api/watch")
+def api_watch_save():
+    """Save the Watch a folder settings, then start or stop background renaming to
+    match. Turning it on, or changing the folder, records the files already there,
+    which are then left as they are."""
+    body = request.get_json(silent=True) or {}
+    old = config.watch_settings()
+    new = dict(old)
+    for k in ("enabled", "autostart"):
+        if isinstance(body.get(k), bool):
+            new[k] = body[k]
+    if isinstance(body.get("folder"), str):
+        new["folder"] = body["folder"].strip()
+    if body.get("profile") in conventions.PROFILES:
+        new["profile"] = body["profile"]
+    for k in ("startup_wait_min", "monthly_limit_usd"):
+        if isinstance(body.get(k), (int, float)) and not isinstance(body.get(k), bool):
+            new[k] = body[k]
+    if new["enabled"]:
+        if not _is_folder(new["folder"]):
+            return jsonify(error=NOT_FOUND), 400
+        if not old["enabled"] or not known.same_folder(old["folder"], new["folder"]):
+            try:
+                known.record_folder(new["folder"])
+            except OSError as e:
+                return jsonify(error=CANT_OPEN % (e.strerror or e)), 400
+    with LOCK:
+        config.save(watch=new)
+    new = config.watch_settings()
+    err = None
+    if new["enabled"] and new["autostart"] and autostart.available():
+        err = autostart.enable()  # also refreshes the shortcut after the app moved
+    else:
+        autostart.disable()
+    if new["enabled"] and not watch.running():
+        spawn_watcher()
+    elif not new["enabled"] and watch.running():
+        watch.request_stop()
+    out = watch_state()
+    if err:
+        out["error"] = err
+    return jsonify(out)
+
+
+@app.post("/api/watch/start")
+def api_watch_start():
+    if config.watch_settings()["enabled"] and not watch.running():
+        spawn_watcher()
+    return jsonify(watch_state())
+
+
+@app.post("/api/watch/log")
+def api_watch_log():
+    path = watch.watch_dir() / "watch.log"
+    if not path.exists():
+        return jsonify(error="Nothing has been logged yet."), 404
+    if sys.platform == "win32":
+        os.startfile(str(path))
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
+    return jsonify(ok=True)
 
 
 @app.get("/api/pick-folder")

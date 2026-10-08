@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import threading
 import webbrowser
 
@@ -31,7 +32,10 @@ def listen_for_drops(window):
     window.dom.document.events.drop += DOMEventHandler(on_drop, prevent_default=True, stop_propagation=True)
 
 
-def main():
+def main(argv=None):
+    if "--watch" in (sys.argv[1:] if argv is None else argv):
+        import watch  # background renaming: no window, no web server
+        return watch.main()
     url = serve()
     if os.environ.get("SMART_EXPLORER_HEADLESS") == "1":
         print(url, flush=True)

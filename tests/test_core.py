@@ -1,5 +1,8 @@
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 import config
 import renamer
@@ -135,3 +138,84 @@ def test_siblings_lists_other_files_in_the_batch_folders(tmp_path):
     (tmp_path / "sub").mkdir()
     batch = [i for i in scanner.scan(str(tmp_path)) if i["name"] in ("1.png", "2.png")]
     assert scanner.siblings(batch) == ["Giving", "notes"]
+
+
+def test_save_writes_atomically_and_leaves_no_temp_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    swaps = []
+    real = os.replace
+    monkeypatch.setattr(config.os, "replace", lambda a, b: (swaps.append((Path(a).name, Path(b).name)), real(a, b)))
+    config.save(key="sk")
+    assert config.load()["key"] == "sk"
+    assert swaps and swaps[0][1] == "config.json" and swaps[0][0].endswith(".tmp")
+    assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
+
+
+def test_write_json_retries_while_the_file_is_busy(tmp_path, monkeypatch):
+    calls = []
+    real = os.replace
+
+    def busy_once(a, b):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError("in use")  # Windows: another process is reading it
+        real(a, b)
+
+    monkeypatch.setattr(config.os, "replace", busy_once)
+    monkeypatch.setattr(config.time, "sleep", lambda s: None)
+    config.write_json(tmp_path / "x.json", {"a": 1})
+    assert json.loads((tmp_path / "x.json").read_text()) == {"a": 1} and len(calls) == 2
+
+
+def test_watch_settings_defaults_and_clamps(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    assert config.watch_settings() == config.WATCH_DEFAULTS
+    config.save(watch={"enabled": "yes", "folder": 7, "startup_wait_min": 99, "monthly_limit_usd": -3, "autostart": True})
+    s = config.watch_settings()
+    assert s["enabled"] is False and s["folder"] == "" and s["autostart"] is True
+    assert s["startup_wait_min"] == 30 and s["monthly_limit_usd"] == 0.0
+    config.save(watch={"enabled": True, "folder": "/x", "startup_wait_min": True, "monthly_limit_usd": 12.5})
+    s = config.watch_settings()
+    assert s["enabled"] is True and s["folder"] == "/x" and s["startup_wait_min"] == 3 and s["monthly_limit_usd"] == 12.5
+    (tmp_path / "config.json").write_text("{broken")
+    assert config.watch_settings() == config.WATCH_DEFAULTS
+    config.save(watch="nonsense")
+    assert config.watch_settings() == config.WATCH_DEFAULTS
+
+
+def _named(*names, folder="/x/Slides"):
+    return [{"path": "%s/%s" % (folder, n), "name": n} for n in names]
+
+
+@pytest.mark.parametrize("names", [
+    ["%d.png" % n for n in range(1, 11)],
+    ["Slide1.png", "Slide2.png", "Slide3.png"],
+    ["Sermon.001.png", "Sermon.002.png"],
+    ["01 Welcome.png", "02 Giving.png"],
+    ["1.png", "2.png", "4.png"],  # gaps allowed: deleted slides
+])
+def test_looks_numbered(names):
+    assert scanner.looks_numbered(_named(*names))
+
+
+@pytest.mark.parametrize("names", [
+    ["IMG_4521.jpg", "IMG_4522.jpg"],  # a camera's numbers, not a deck
+    ["Giving.png", "Sermon.png"],
+    ["1.png"],  # one file has no order to keep
+    ["1.png", "1 copy.png"],
+    ["1-a.png", "1-b.png"],  # the same number twice
+    ["1.png", "2.png", "Giving.png"],
+])
+def test_looks_numbered_rejects(names):
+    assert not scanner.looks_numbered(_named(*names))
+
+
+def test_looks_numbered_checks_each_folder():
+    assert scanner.looks_numbered(_named("1.png", "2.png") + _named("Slide1.png", "Slide2.png", folder="/y"))
+    assert not scanner.looks_numbered(_named("1.png", "2.png") + _named("a.png", "b.png", folder="/y"))
+
+
+def test_order_numbers_per_folder_with_at_least_two_digits():
+    assert scanner.order_numbers(_named("a", "b", "c")) == ["01", "02", "03"]
+    assert scanner.order_numbers(_named(*map(str, range(100))))[:2] == ["001", "002"]
+    assert scanner.order_numbers(_named("a", "b") + _named("c", folder="/y")) == ["01", "02", "01"]

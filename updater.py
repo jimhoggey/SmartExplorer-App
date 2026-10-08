@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.request import Request
 
 import config
+import watch
 from net import urlopen
 from version import APP_VERSION
 
@@ -219,6 +220,7 @@ def _install(asset, app, version):
         STATE["state"] = "installing"
         with LOCK:
             config.save(update_attempt=version)
+        watch.stop_and_wait(timeout=10.0)  # Windows can't replace a running program; the installer starts it again
         launch(installer, app)
         STATE["state"] = "restarting"
         threading.Timer(1.0, quit_app).start()  # time for the window to show "restarting"

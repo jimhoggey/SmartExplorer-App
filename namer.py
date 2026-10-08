@@ -21,6 +21,7 @@ from net import urlopen
 
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 KEY_URL = "https://openrouter.ai/api/v1/key"
+CREDITS_URL = "https://openrouter.ai/api/v1/credits"
 HEADERS = {"Content-Type": "application/json", "HTTP-Referer": "https://smart-explorer.local", "X-Title": "Smart Explorer"}
 # Reading a slide needs eyes, not deliberation; naming the batch needs some judgement.
 READ_EFFORT, NAME_EFFORT = "low", "medium"
@@ -65,6 +66,15 @@ class NamerError(Exception):
     def __init__(self, msg, status=None, cost=0.0):
         super().__init__(msg)
         self.status, self.cost = status, cost
+
+
+class Failure(str):
+    """Why naming failed, as text, also carrying OpenRouter's HTTP status (or None)."""
+
+    def __new__(cls, text, status=None):
+        out = super().__new__(cls, text)
+        out.status = status
+        return out
 
 
 def _request(url, key, data=None, timeout=90, tries=3):
@@ -196,13 +206,21 @@ def read_batch(key, model, items, encoded, profile=conventions.DEFAULT_PROFILE, 
             for n, (item, enc) in enumerate(zip(items, encoded), 1)], cost
 
 
+def _failed(e):
+    """A description that failed, keeping OpenRouter's HTTP status when there was one."""
+    out = {"error": str(e)}
+    if getattr(e, "status", None) is not None:
+        out["status"] = e.status
+    return out
+
+
 def describe(key, model, item, encoded, profile=conventions.DEFAULT_PROFILE, context=""):
     """One file on its own. Returns (description, cost); a failure is {"error": ...}."""
     try:
         descs, cost = read_batch(key, model, [item], [encoded], profile, context)
         return descs[0], cost
     except Exception as e:
-        return {"error": str(e)}, getattr(e, "cost", 0.0)
+        return _failed(e), getattr(e, "cost", 0.0)
 
 
 def _dedupe(names, taken=()):
@@ -285,15 +303,17 @@ def name_all(key, model, descs, profile=conventions.DEFAULT_PROFILE, context="",
     except Exception as e:
         cost += getattr(e, "cost", 0.0)
         names = [None] * len(descs)
-        err = "AI naming failed (%s). These are the raw words on each file, not chosen names." % e
+        err = Failure("AI naming failed (%s). These are the raw words on each file, not chosen names." % e,
+                      getattr(e, "status", None))
     fallback = lambda d: clean(d.get("subject") or str(d.get("text") or "")[:60], d["original"]) or Path(d["original"]).stem
     return _dedupe((clean(n, d["original"]) or fallback(d) for n, d in zip(names, descs)), existing), err, cost
 
 
-def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, context="",
-        existing=()):
-    """Name every item. Returns {"results": [{id, path, proposed, error?}], "cost": USD}.
-    existing: names already taken by other files in the same folders."""
+def read_all(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, context=""):
+    """The paid step: describe every item. Returns (descriptions in item order, cost).
+    A failure is {"error": ...}, with "local": True when the file could not be read on
+    this computer (nothing was sent, so nothing charged) and "status" when OpenRouter
+    answered with an HTTP error."""
     notify = on_progress or (lambda *a: None)
     opts = (profile, context)
 
@@ -304,7 +324,7 @@ def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT
                 enc.append(encode(it))
                 ready.append(it)
             except Exception as e:
-                descs[it["id"]] = {"error": "Could not read file: %s" % e}
+                descs[it["id"]] = {"error": "Could not read file: %s" % e, "local": True}
         if ready:
             try:
                 got, cost = read_batch(key, model, ready, enc, *opts)
@@ -312,7 +332,7 @@ def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT
             except Exception as e:
                 cost = getattr(e, "cost", 0.0)
                 if len(ready) == 1 or getattr(e, "status", None) in NO_RETRY:
-                    descs.update((it["id"], {"error": str(e)}) for it in ready)
+                    descs.update((it["id"], _failed(e)) for it in ready)
                 else:  # one file per request instead, so one bad file cannot sink the rest
                     for it, one in zip(ready, enc):
                         descs[it["id"]], c = describe(key, model, it, one, *opts)
@@ -324,13 +344,23 @@ def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT
     batches = [items[i:i + READ_BATCH] for i in range(0, len(items), READ_BATCH)]
     with ThreadPoolExecutor(READ_WORKERS) as ex:
         read_out = list(ex.map(read, batches))
-    descs = [d for ds, _ in read_out for d in ds]
+    return [d for ds, _ in read_out for d in ds], sum(c for _, c in read_out)
+
+
+def name_described(key, model, items, descs, on_progress=None, profile=conventions.DEFAULT_PROFILE, context="",
+                   existing=()):
+    """The naming step, for items read_all described (descs in item order). Returns
+    {"results": [{id, path, proposed, error?}], "cost": USD, "name_error": None or why
+    naming failed, "name_status": OpenRouter's HTTP status for that failure, or None}.
+    An item whose description failed keeps its own name. When naming failed, every
+    proposed name is the file's raw words, not a chosen name."""
+    notify = on_progress or (lambda *a: None)
     ok = [{**d, "i": i, "original": it["name"]} for i, (it, d) in enumerate(zip(items, descs)) if "error" not in d]
-    names, name_err, name_cost = name_all(key, model, ok, *opts, existing=existing) if ok else ([], None, 0.0)
+    names, name_err, cost = name_all(key, model, ok, profile, context, existing=existing) if ok else ([], None, 0.0)
     proposed = dict(zip((d["i"] for d in ok), names))
-    chosen = [proposed.get(i, Path(it["name"]).stem) for i, it in enumerate(items)]
     out = []
-    for it, d, name in zip(items, descs, chosen):
+    for i, (it, d) in enumerate(zip(items, descs)):
+        name = proposed.get(i, Path(it["name"]).stem)
         r = {"id": it["id"], "path": it["path"], "proposed": name}
         if "error" in d:
             r["error"] = d["error"]
@@ -338,7 +368,16 @@ def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT
             r["error"] = name_err
         notify(it["id"], "named", name)
         out.append(r)
-    return {"results": out, "cost": sum(c for _, c in read_out) + name_cost}
+    return {"results": out, "cost": cost, "name_error": name_err, "name_status": getattr(name_err, "status", None)}
+
+
+def run(key, model, items, encode, on_progress=None, profile=conventions.DEFAULT_PROFILE, context="",
+        existing=()):
+    """Name every item. Returns {"results": [{id, path, proposed, error?}], "cost": USD}.
+    existing: names already taken by other files in the same folders."""
+    descs, read_cost = read_all(key, model, items, encode, on_progress, profile, context)
+    out = name_described(key, model, items, descs, on_progress, profile, context, existing)
+    return {"results": out["results"], "cost": read_cost + out["cost"]}
 
 
 def check_key(key):
@@ -346,12 +385,22 @@ def check_key(key):
     try:
         data = _request(KEY_URL, key).get("data") or {}
     except NamerError as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "status": e.status}
     out = {"ok": True, "label": data.get("label")}
     for field, name in (("usage", "spent"), ("limit_remaining", "left")):
         if isinstance(data.get(field), (int, float)) and not isinstance(data.get(field), bool):
             out[name] = float(data[field])
     return out
+
+
+def credits_left(key):
+    """US$ of credit left on the OpenRouter account, or None when OpenRouter does not
+    say (it may want a different kind of key). Free: no model runs."""
+    try:
+        data = _request(CREDITS_URL, key, tries=1).get("data") or {}
+        return float(data["total_credits"]) - float(data["total_usage"])
+    except Exception:
+        return None
 
 
 def mock_run(items, on_progress=None, **_):

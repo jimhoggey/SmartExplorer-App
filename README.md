@@ -63,6 +63,18 @@ The full naming convention, with examples, is in [docs/naming-convention.md](doc
 
 Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)` on collisions. Existing files are never overwritten. Undo journals live in `~/.smart-explorer/journal/`.
 
+## Background renaming (watch a folder)
+
+Smart Explorer can rename new files in one folder by itself, with no window open: made for a Google Drive folder that ProPresenter's playlist watches. Set it up in *Settings → Watch a folder*: the folder, the naming style, a start-up wait (minutes for Google Drive to bring new files down after the computer starts, default 3), a monthly spending limit for background naming (default US$5) and, on Windows, **Start when Windows starts**.
+
+- Files already in the folder when you turn it on are left as they are. After that, a file is new when Smart Explorer knows neither its name nor its size and modified time: a file you rename by hand, or an updated slide uploaded under the same name, is not renamed again.
+- It waits for each download to finish and for a quiet minute, names files that arrive together as one batch (with Keep order numbering when they are numbered in sequence), and never renames with a guess: if naming fails, files keep their names and are tried again, at most twice per start-up, so a problem cannot keep spending.
+- Before each batch it checks the key and credit with OpenRouter, which costs nothing. A rejected key or no credit pauses it until fixed.
+- Notifications say when it starts, what it renamed and any problem. The window shows a status bar while watching is on. The log is `~/.smart-explorer/watch/watch.log` (*Settings → Open log*).
+- From source, `.venv/bin/python desktop.py --watch` runs it in the terminal.
+
+For the people at the ProPresenter computer: [docs/background-renaming.md](docs/background-renaming.md).
+
 ## How it keeps cost down
 
 OpenRouter charges per token, not per request, so running requests in parallel costs nothing extra and is simply faster. The app sends each image at full resolution but groups 8 files per request, so the instructions are paid for once per 8 files, and asks for short descriptions because output tokens cost several times more than input. A second, text-only request names the whole batch together, which is what keeps similar files consistent and distinct. Packing several slides into one grid image would save a little more, but only by shrinking each slide, which loses the small text (bank details, dates, links) that tells near-duplicates apart.

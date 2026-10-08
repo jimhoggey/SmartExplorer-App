@@ -442,3 +442,74 @@ def test_chat_asks_openrouter_for_cost(monkeypatch):
     stub(monkeypatch, "{}", seen)
     namer.chat("k", "m", [])
     assert json.loads(seen[0].data)["usage"] == {"include": True}
+
+
+def test_read_all_marks_local_failures_and_http_status(monkeypatch):
+    def chat(key, model, messages, **kw):
+        raise namer.NamerError("OpenRouter returned HTTP 402: no credit", status=402)
+
+    monkeypatch.setattr(namer, "chat", chat)
+
+    def encode(item):
+        if item["id"] == 0:
+            raise OSError("damaged")
+        return ENC
+
+    descs, cost = namer.read_all("k", "m", ITEMS[:2], encode)
+    assert descs[0]["local"] is True and "damaged" in descs[0]["error"]
+    assert descs[1]["status"] == 402 and "local" not in descs[1]
+
+
+def test_name_described_reuses_descriptions_without_reading(monkeypatch):
+    calls = []
+    good = fake_chat()
+
+    def chat(key, model, messages, **kw):
+        calls.append(isinstance(messages[1]["content"], list))
+        return good(key, model, messages, **kw)
+
+    monkeypatch.setattr(namer, "chat", chat)
+    descs = [dict(DESC), {"error": "Could not read file: x", "local": True}, dict(DESC)]
+    out = namer.name_described("k", "m", ITEMS, descs)
+    assert calls == [False]  # one naming request, no image reading
+    assert [r["proposed"] for r in out["results"]] == ["Name 0", "1", "Name 2"]
+    assert "error" in out["results"][1] and out["name_error"] is None and out["cost"] == 0.01
+
+
+def test_name_described_reports_a_naming_failure(monkeypatch):
+    monkeypatch.setattr(namer, "chat", fake_chat(fail_naming=True))
+    out = namer.name_described("k", "m", ITEMS[:1], [dict(DESC)])
+    assert out["name_error"] and "429" in out["results"][0]["error"]
+
+
+def test_a_refused_naming_request_keeps_its_http_status(monkeypatch):
+    monkeypatch.setattr(namer, "urlopen", raise_(HTTPError("https://x", 402, "no", {}, io.BytesIO(b"no credit"))))
+    names, err, cost = namer.name_all("k", "m", DESCS)
+    assert "402" in err and err.status == 402
+    out = namer.name_described("k", "m", ITEMS[:1], [dict(DESC)])
+    assert out["name_status"] == 402
+    monkeypatch.setattr(namer, "chat", fake_chat())
+    assert namer.name_described("k", "m", ITEMS[:1], [dict(DESC)])["name_status"] is None
+
+
+def test_check_key_reports_the_http_status(monkeypatch):
+    monkeypatch.setattr(namer, "urlopen", raise_(HTTPError("https://x", 401, "no", {}, io.BytesIO(b"bad key"))))
+    r = namer.check_key("k")
+    assert r["ok"] is False and r["status"] == 401
+    monkeypatch.setattr(namer, "urlopen", raise_(URLError("down")))
+    assert namer.check_key("k")["status"] is None
+
+
+def test_credits_left(monkeypatch):
+    seen = []
+
+    def fake(req, timeout=None):
+        seen.append(req.full_url)
+        return io.BytesIO(b'{"data": {"total_credits": 10, "total_usage": 9.5}}')
+
+    monkeypatch.setattr(namer, "urlopen", fake)
+    assert namer.credits_left("k") == pytest.approx(0.5) and seen == [namer.CREDITS_URL]
+    monkeypatch.setattr(namer, "urlopen", raise_(HTTPError("https://x", 403, "no", {}, io.BytesIO(b"needs another key"))))
+    assert namer.credits_left("k") is None
+    monkeypatch.setattr(namer, "urlopen", lambda req, timeout=None: io.BytesIO(b'{"data": {}}'))
+    assert namer.credits_left("k") is None

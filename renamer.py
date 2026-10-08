@@ -49,7 +49,11 @@ def apply(pairs, journal_dir=None):
             out["error"] = "Could not rename %s: %s" % (Path(old).name, e.strerror or e)
             break
         out["renamed"] += 1
-    (journal_dir / (out["journal"] + ".json")).write_text(json.dumps(pairs[:out["renamed"]]), "utf-8")
+    try:
+        (journal_dir / (out["journal"] + ".json")).write_text(json.dumps(pairs[:out["renamed"]]), "utf-8")
+    except OSError as e:  # the files are renamed already: say so, rather than lose track of them
+        msg = "The undo record could not be saved: %s" % (e.strerror or e)
+        out["error"] = "%s. %s" % (out["error"], msg) if "error" in out else msg
     return out
 
 

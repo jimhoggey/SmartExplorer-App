@@ -1,4 +1,6 @@
 import json
+import os
+import time
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".smart-explorer"
@@ -31,13 +33,57 @@ def model():
     return DEFAULT_MODEL if not m or m in RETIRED else m
 
 
-def save(**kv):
-    data = {**load(), **kv}
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    path = CONFIG_DIR / "config.json"
-    path.write_text(json.dumps(data), "utf-8")
+def write_json(path, data):
+    """Write JSON so that a reader never sees half a file: a temporary file, then a
+    swap. The window and background renaming are separate processes reading the
+    same files. On Windows the swap fails while another process has the file open
+    for a moment, so it tries again."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name("%s.%d.tmp" % (path.name, os.getpid()))
+    tmp.write_text(json.dumps(data), "utf-8")
     try:
-        path.chmod(0o600)
+        tmp.chmod(0o600)
     except OSError:
         pass
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
+
+
+def save(**kv):
+    data = {**load(), **kv}
+    write_json(CONFIG_DIR / "config.json", data)
     return data
+
+
+# Background renaming (Settings, Watch a folder), saved under "watch". Missing or
+# wrong values fall back to these.
+WATCH_DEFAULTS = {"enabled": False, "folder": "", "profile": "propresenter", "startup_wait_min": 3,
+                  "monthly_limit_usd": 5.0, "autostart": False}
+
+
+def _number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def watch_settings():
+    saved = load().get("watch")
+    saved = saved if isinstance(saved, dict) else {}
+    out = dict(WATCH_DEFAULTS)
+    for k in ("enabled", "autostart"):
+        if isinstance(saved.get(k), bool):
+            out[k] = saved[k]
+    for k in ("folder", "profile"):
+        if isinstance(saved.get(k), str) and saved[k].strip():
+            out[k] = saved[k].strip()
+    if _number(saved.get("startup_wait_min")):
+        out["startup_wait_min"] = min(max(int(saved["startup_wait_min"]), 0), 30)
+    if _number(saved.get("monthly_limit_usd")):
+        out["monthly_limit_usd"] = max(float(saved["monthly_limit_usd"]), 0.0)
+    return out

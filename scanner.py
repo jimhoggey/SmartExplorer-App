@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 from pathlib import Path
 
 IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif"}
@@ -35,6 +36,41 @@ def scan(*paths):
                 files.append(f)
     files.sort(key=natural_key)
     return [{"id": i, "path": str(p), "name": p.name, "kind": kind(p)} for i, p in enumerate(files)]
+
+
+def looks_numbered(items):
+    """Whether files are numbered in sequence (1.png…14.png, Slide1…, Sermon.001…, or
+    names that already start 01, 02…): renamed without numbers they would sort A to Z
+    in ProPresenter, so Keep order is on for them. Every folder must be numbered, with
+    small, distinct numbers: a deck (gaps allowed, for deleted slides), not a camera's
+    IMG_4521. ASCII digits only, as in the window it came from."""
+    if len(items) < 2:
+        return False
+    folders = {}
+    for it in items:
+        folders.setdefault(str(Path(it["path"]).parent), []).append(re.sub(r"\.[^.]+$", "", it["name"]))
+    for stems in folders.values():
+        lead = [re.match(r"([0-9]+)[\s._-]", s) for s in stems]
+        tails = [re.sub(r"[0-9]+(?=[^0-9]*$)", "#", s, count=1) for s in stems]
+        if all(lead):
+            nums = [int(m.group(1)) for m in lead]
+        elif all(t == tails[0] and "#" in t for t in tails):
+            nums = [int(re.search(r"([0-9]+)[^0-9]*$", s).group(1)) for s in stems]
+        else:
+            return False
+        if len(set(nums)) != len(nums) or max(nums) > 2 * len(nums):
+            return False
+    return True
+
+
+def order_numbers(items):
+    """Keep order's 01, 02… for each item: per folder, in list order, at least two digits."""
+    folders = [str(Path(it["path"]).parent) for it in items]
+    totals, seen, out = Counter(folders), Counter(), []
+    for f in folders:
+        seen[f] += 1
+        out.append(str(seen[f]).zfill(max(2, len(str(totals[f])))))
+    return out
 
 
 def siblings(items, limit=500):

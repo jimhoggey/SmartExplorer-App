@@ -1,0 +1,71 @@
+import base64
+import subprocess
+import sys
+from pathlib import Path
+
+import autostart
+import notify
+
+
+def test_windows_toast_escapes_text_and_picks_the_app_id():
+    argv, env = notify.command("Smart Explorer", "Giving & <Offering>", system="win32", frozen=True)
+    assert argv[0] == "powershell" and "-EncodedCommand" in argv
+    script = base64.b64decode(argv[argv.index("-EncodedCommand") + 1]).decode("utf-16-le")
+    assert "ToastNotificationManager" in script and "$env:SE_TOAST" in script
+    assert "Giving &amp; &lt;Offering&gt;" in env["SE_TOAST"] and env["SE_APP_ID"] == notify.APP_ID
+    assert notify.command("t", "x", system="win32", frozen=False)[1]["SE_APP_ID"] == notify.POWERSHELL_ID
+
+
+def test_mac_notification_passes_text_as_arguments():
+    argv, env = notify.command("Smart Explorer", 'Say "hi"', system="darwin")
+    assert argv[0] == "osascript" and argv[-2:] == ["Smart Explorer", 'Say "hi"'] and env == {}
+    assert notify.command("t", "x", system="linux") is None
+
+
+def test_notify_never_raises(monkeypatch):
+    monkeypatch.setattr(notify.sys, "platform", "darwin")
+    ok = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, b"", b"")
+    assert notify.notify("hi", run=ok) is None
+    bad = lambda argv, **kw: subprocess.CompletedProcess(argv, 1, b"", b"not allowed")
+    assert notify.notify("hi", run=bad) == "not allowed"
+
+    def boom(argv, **kw):
+        raise OSError("no osascript")
+
+    assert "no osascript" in notify.notify("hi", run=boom)
+    monkeypatch.setattr(notify.sys, "platform", "linux")
+    assert notify.notify("hi", run=ok)
+
+
+def test_watch_command_from_source_and_installed(monkeypatch):
+    argv = autostart.watch_command()
+    assert argv[-2:] == [str(Path(autostart.__file__).resolve().parent / "desktop.py"), "--watch"]
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "/Apps/Smart Explorer.exe")
+    assert autostart.watch_command() == ["/Apps/Smart Explorer.exe", "--watch"]
+
+
+def test_autostart_only_on_windows(monkeypatch):
+    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    assert not autostart.available() and not autostart.enabled()
+    assert "only" in autostart.enable(run=lambda *a, **k: None)
+    autostart.disable()  # nothing to do, no error
+
+
+def test_autostart_creates_and_removes_the_shortcut(monkeypatch, tmp_path):
+    monkeypatch.setattr(autostart.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    seen = {}
+
+    def run(argv, env=None, **kw):
+        seen.update(env)
+        Path(env["SE_LNK"]).write_bytes(b"lnk")  # what PowerShell would do
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    assert autostart.enable(run=run) is None
+    assert seen["SE_LNK"].endswith(autostart.NAME) and "Startup" in seen["SE_LNK"]
+    assert seen["SE_ARGS"].endswith("--watch") and autostart.enabled()
+    autostart.disable()
+    assert not autostart.enabled()
+    fail = lambda argv, **kw: subprocess.CompletedProcess(argv, 1, b"", b"denied")
+    assert "denied" in autostart.enable(run=fail)

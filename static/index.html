@@ -36,6 +36,13 @@
   <button id="updateLater" class="ghost">Later</button>
 </div>
 
+<div id="watchbar" class="watchbar" role="status" hidden>
+  <span class="dot" aria-hidden="true"></span>
+  <span id="watchText"></span>
+  <span class="spacer"></span>
+  <button id="watchStart" class="primary" hidden>Start</button>
+</div>
+
 <div class="page">
   <section class="panel">
     <div class="bar">
@@ -104,6 +111,25 @@
       <div><b>Naming prompts</b><small>See and change what the AI is told for ProPresenter and for Photos &amp; files.</small></div>
       <button type="button" id="editPrompts">View and edit</button>
     </div>
+    <fieldset class="watch">
+      <legend>Watch a folder</legend>
+      <label class="check"><input id="wOn" type="checkbox"><span>Rename new files in a folder by itself, with no window open</span></label>
+      <div id="wFields" hidden>
+        <label>Folder <small>The Google Drive folder ProPresenter's playlist watches. Files already in it are left as they are.</small>
+          <span class="keyrow"><input id="wFolder" type="text" spellcheck="false" placeholder="Paste the folder's path, or Choose">
+            <button type="button" id="wPick">Choose</button></span>
+        </label>
+        <label>Naming style <select id="wProfile"></select></label>
+        <div class="pair">
+          <label>Start-up wait (minutes) <small>Time for Google Drive to bring new files down.</small>
+            <input id="wWait" type="number" min="0" max="30" step="1"></label>
+          <label>Monthly limit (US$) <small id="wSpent"></small>
+            <input id="wLimit" type="number" min="0" step="1"></label>
+        </div>
+        <label class="check" id="wAutoRow"><input id="wAuto" type="checkbox"><span>Start when Windows starts</span></label>
+        <p class="wstatus"><span id="wStatus"></span> <button type="button" id="wLog" class="link">Open log</button></p>
+      </div>
+    </fieldset>
     <p id="keymsg" class="msg" aria-live="polite"></p>
     <div class="actions">
       <button type="button" id="test">Test key</button>
