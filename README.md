@@ -65,7 +65,11 @@ Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)
 
 ## Background renaming (watch a folder)
 
-Smart Explorer can rename new files in one folder by itself, with no window open: made for a Google Drive folder that ProPresenter's playlist watches. Set it up in *Settings → Watch a folder*: the folder, the naming style, a start-up wait (minutes for Google Drive to bring new files down after the computer starts, default 3), a monthly spending limit for background naming (default US$5) and, on Windows, **Start when Windows starts**.
+Smart Explorer can rename new files in one folder by itself, with no window open: made for a Google Drive folder that ProPresenter's playlist watches. Set it up in *Settings → Watch a folder*: the folder, the naming style and a monthly AI limit for background naming (default US$5). Turned on there, it starts watching straight away and keeps running after you close the window.
+
+Tick **Start by itself when the computer starts** and Smart Explorer adds itself to the computer's start-up items (a Startup shortcut on Windows, a login item on a Mac); you don't add it yourself. Only then does **Wait after the computer starts** apply (default 3 minutes): time for Google Drive to download the week's files before anything is renamed.
+
+It works while the computer is awake: a sleeping computer renames nothing until it wakes, so set the ProPresenter computer not to sleep while it is in use.
 
 - Files already in the folder when you turn it on are left as they are. After that, a file is new when Smart Explorer knows neither its name nor its size and modified time: a file you rename by hand, or an updated slide uploaded under the same name, is not renamed again.
 - It waits for each download to finish and for a quiet minute, names files that arrive together as one batch (with Keep order numbering when they are numbered in sequence), and never renames with a guess: if naming fails, files keep their names and are tried again, at most twice per start-up, so a problem cannot keep spending.

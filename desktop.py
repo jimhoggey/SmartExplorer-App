@@ -33,9 +33,10 @@ def listen_for_drops(window):
 
 
 def main(argv=None):
-    if "--watch" in (sys.argv[1:] if argv is None else argv):
+    args = sys.argv[1:] if argv is None else argv
+    if "--watch" in args:
         import watch  # background renaming: no window, no web server
-        return watch.main()
+        return watch.main(now="--now" in args)  # --now: started from the window, so no start-up wait
     url = serve()
     if os.environ.get("SMART_EXPLORER_HEADLESS") == "1":
         print(url, flush=True)

@@ -18,7 +18,7 @@ Smart Explorer names new slides and videos for ProPresenter by itself. Files put
 | it has reached this month's limit | Tell the tech lead. |
 | it couldn't name a file | That file keeps its old name and still works in ProPresenter. |
 
-Never rename or move files in that folder during a service.
+Never rename or move files in that folder during a service. If the computer goes to sleep, nothing is renamed until it wakes up.
 
 ## When you're stuck
 

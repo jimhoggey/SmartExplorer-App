@@ -186,8 +186,9 @@ class Watcher:
     naming steps, the free check and notifications can be passed in, so tests run it
     without waiting or OpenRouter."""
 
-    def __init__(self, clock=time.time, say=None, read=None, name=None, check=None):
+    def __init__(self, clock=time.time, say=None, read=None, name=None, check=None, startup=True):
         self.clock = clock
+        self.startup = startup  # started with the computer: wait for Google Drive first
         self.say = say or _say
         self.read = read or _read
         self.name = name or _name
@@ -227,7 +228,7 @@ class Watcher:
             if self.folder is not None:
                 self._forget()
             self.folder = folder
-        wait = s["startup_wait_min"] * 60
+        wait = s["startup_wait_min"] * 60 if self.startup else 0
         if not self.announced:
             self.announced = True
             when = "in %s" % _plural(s["startup_wait_min"], "minute") if wait else "as they arrive"
@@ -259,9 +260,12 @@ class Watcher:
             if settling:
                 return self._status("downloading", "Waiting for %s to finish downloading" % _plural(len(settling), "file"))
             return self._status("watching", self._watching())
-        if now - self.activity < (GAP if self.batches else FIRST_GAP):
-            return self._status("downloading",
-                                "Waiting for %s to finish downloading" % _plural(len(ready) + len(settling), "file"))
+        quiet = GAP if self.batches else FIRST_GAP
+        if now - self.activity < quiet:
+            if settling:
+                return self._status("downloading", "Waiting for %s to finish downloading" % _plural(len(settling), "file"))
+            return self._status("downloading", "Found %s. Renaming in %d s, in case more are on the way." % (
+                _plural(len(ready), "new file"), math.ceil(quiet - (now - self.activity))))
         problem = self._blocked(s, now)
         if problem:
             return self._status("paused", "Paused: " + self._paused(problem, s))
@@ -592,11 +596,11 @@ def spawn(popen=subprocess.Popen):
         kw = {"creationflags": getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
     else:
         kw = {"start_new_session": True}
-    popen(autostart.watch_command(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+    popen(autostart.watch_command(now=True), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
           stderr=subprocess.DEVNULL, close_fds=True, **kw)
 
 
-def main(sleep=time.sleep, watcher=None):
+def main(sleep=time.sleep, watcher=None, now=False):
     """Watch until stopped or switched off. Returns at once when another watcher runs."""
     lock = take_lock()
     for _ in range(LOCK_TRIES - 1):  # the window may be checking running() at this very moment
@@ -607,7 +611,7 @@ def main(sleep=time.sleep, watcher=None):
     if lock is None:
         return 0
     _take_stop()
-    w = watcher or Watcher()
+    w = watcher or Watcher(startup=not now)  # now: started from the window, the computer is already up
     log("Started")
     try:
         while True:

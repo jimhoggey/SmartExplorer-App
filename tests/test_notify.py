@@ -45,11 +45,31 @@ def test_watch_command_from_source_and_installed(monkeypatch):
     assert autostart.watch_command() == ["/Apps/Smart Explorer.exe", "--watch"]
 
 
-def test_autostart_only_on_windows(monkeypatch):
-    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+def test_autostart_on_windows_and_mac_only(monkeypatch):
+    monkeypatch.setattr(autostart.sys, "platform", "linux")
     assert not autostart.available() and not autostart.enabled()
     assert "only" in autostart.enable(run=lambda *a, **k: None)
     autostart.disable()  # nothing to do, no error
+    assert autostart.available("darwin") and autostart.available("win32")
+
+
+def test_watch_command_now_skips_the_wait():
+    assert autostart.watch_command(now=True)[-2:] == ["--watch", "--now"]
+    assert autostart.watch_command()[-1] == "--watch"
+
+
+def test_mac_login_item_is_a_launch_agent(monkeypatch, tmp_path):
+    import plistlib
+    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert not autostart.enabled()
+    assert autostart.enable() is None and autostart.enabled()
+    agent = tmp_path / "Library" / "LaunchAgents" / (autostart.MAC_LABEL + ".plist")
+    data = plistlib.loads(agent.read_bytes())
+    assert data["Label"] == autostart.MAC_LABEL and data["RunAtLoad"] is True
+    assert data["ProgramArguments"] == autostart.watch_command()  # at login: with the start-up wait
+    autostart.disable()
+    assert not agent.exists() and not autostart.enabled()
 
 
 def test_autostart_creates_and_removes_the_shortcut(monkeypatch, tmp_path):

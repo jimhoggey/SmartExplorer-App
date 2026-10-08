@@ -25,8 +25,8 @@ there is no quiet time.
 
 ## Not in this version
 Undo for automatic batches (journals are still written, so it can be added) ·
-quiet time · subfolders · start at login on a Mac · context text per batch ·
-tray icon · per-folder naming prompts.
+quiet time · subfolders · context text per batch · tray icon · per-folder
+naming prompts.
 
 ## How it runs
 - **Background mode.** `Smart Explorer.exe --watch` (from source: `python desktop.py --watch`)
@@ -41,18 +41,23 @@ tray icon · per-folder naming prompts.
 - **Stopping.** The window asks the watcher to stop by creating
   `~/.smart-explorer/watch/stop`. The watcher checks for it every loop, deletes
   it and exits.
-- **Start when Windows starts.** A shortcut `Smart Explorer (background).lnk` in
-  the user's Startup folder (`shell:startup`) runs `Smart Explorer.exe --watch`.
-  The window creates and removes it (PowerShell `WScript.Shell`, run with no
-  window). No administrator rights are needed. Windows runs it at **sign-in**:
-  if the PC signs in automatically, that is start-up; otherwise it starts when
-  someone types the password, which they do anyway before opening ProPresenter.
+- **Start by itself when the computer starts** (Settings checkbox). Smart Explorer
+  adds itself to the computer's start-up items, so nobody adds it by hand. On
+  Windows: a shortcut `Smart Explorer (background).lnk` in the user's Startup
+  folder (`shell:startup`) runs `Smart Explorer.exe --watch` (PowerShell
+  `WScript.Shell`, no window, no administrator rights). On a Mac: a login item, the
+  LaunchAgent `~/Library/LaunchAgents/com.jimhoggey.smartexplorer.watch.plist`
+  (`RunAtLoad`). Either runs at **sign-in**: if the PC signs in automatically, that
+  is start-up; otherwise it starts when someone types the password, which they do
+  anyway before opening ProPresenter.
+- **Started from the window** (turning watching on, the Start button) the watcher
+  runs with `--watch --now`: the computer is already up, so there is **no start-up
+  wait**. Only a start with the computer waits.
 - **Updates.** Before running the installer, the in-app updater creates the stop
   file and waits up to 10 s for the watcher to release its lock. The installer
-  starts `Smart Explorer.exe --watch` again afterwards when the Startup shortcut
-  exists. The uninstaller removes the shortcut.
-- **Mac.** `--watch` works when started by hand (for testing on a Mac), with
-  notifications through `osascript`. There is no start at login on a Mac.
+  starts `Smart Explorer.exe --watch --now` again afterwards when the Startup
+  shortcut exists. The uninstaller removes the shortcut.
+- **Mac.** Notifications go through `osascript`.
 
 ## Spotting new files
 The watcher looks at the top level of the folder every **5 s**. It skips hidden
@@ -85,9 +90,10 @@ stream mode, opening the file also makes Drive download it.)
 
 **Batches.** Files that arrive together are named together, so a set is named
 consistently, look-alikes are told apart and Keep order can number it.
-- **Start-up wait** (a setting, default **3 minutes**, 0–30): after the watcher
-  starts it names nothing for this long, so Drive can bring the whole week down
-  first. It keeps tracking files during the wait.
+- **Wait after the computer starts** (a setting, default **3 minutes**, 0–30,
+  shown only when "Start by itself" is ticked): after a start with the computer
+  the watcher names nothing for this long, so Drive can bring the whole week down
+  first. It keeps tracking files during the wait. A start from the window skips it.
 - After that, a batch starts when there are ready new files and **no new file has
   appeared or changed** for **60 s** (the first batch after start-up) or **20 s**
   (any later batch).
@@ -213,10 +219,16 @@ watching is on, read from `GET /api/watch` every 5 s:
 - **Watch a folder** on/off.
 - **Folder** with *Choose folder*: the Drive folder ProPresenter's playlist watches.
 - **Naming style:** ProPresenter by default.
-- **Start-up wait** in minutes (default 3).
-- **Monthly limit** in US$ (default 5), with this month's background spend beside it.
-- **Start when Windows starts** on/off (Windows only).
+- **Monthly AI limit** in US$ (default 5), with this month's background spend below it.
+- **Start by itself when the computer starts** on/off (Windows and Mac), with a line
+  saying what it means: on, "Smart Explorer adds itself to the computer's start-up
+  items"; off, "it runs until the computer restarts".
+- **Wait after the computer starts** in minutes (default 3), shown only when the
+  box above is ticked, saying that turning it on here starts straight away.
 - **Status line** (as the status bar) and **Open log**.
+
+While a batch waits out its quiet minute the bar says "Found 1 new file. Renaming
+in 45 s, in case more are on the way."
 
 Turning watching on shows "34 files already in this folder will be left as they
 are", records them in the known list, saves the settings and starts the watcher

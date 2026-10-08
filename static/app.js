@@ -4,7 +4,7 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
   "checkUpdates", "updateMsg", "watchbar", "watchText", "watchStart", "wOn", "wFields", "wFolder", "wPick", "wProfile",
-  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wStatus", "wLog"].reduce((o, k) => (o[k] = $(k), o), {});
+  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wWaitRow", "wStatus", "wLog"].reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
 // loadGen: bumped by every load and by Clear, so a scan that finishes after a newer
@@ -616,9 +616,20 @@ function fillWatch() {
   els.wSpent.textContent = w.spent_month ? `${dollars(w.spent_month)} spent this month in the background.`
     : "Nothing spent in the background this month.";
   els.wAutoRow.hidden = !w.can_autostart;
-  els.wAuto.checked = s.autostart;
+  els.wAuto.checked = s.autostart && w.can_autostart;
   els.wStatus.textContent = s.enabled ? watchLine(w) : "";
   els.wFields.hidden = !els.wOn.checked;
+  showAutostart();
+}
+
+// Start by itself: what it means, and the wait that only applies when the computer starts.
+function showAutostart() {
+  const can = !!(watchState && watchState.can_autostart), on = can && els.wAuto.checked;
+  els.wAutoNote.textContent = !can
+    ? "It keeps running after you close this window, until the computer restarts. Then open Smart Explorer to start it again."
+    : on ? "Smart Explorer adds itself to the computer's start-up items. You don't need to do anything else."
+    : "Without this, it runs until the computer restarts. Then open Smart Explorer to start it again.";
+  els.wWaitRow.hidden = !on;
 }
 
 function watchDraft() {
@@ -725,6 +736,7 @@ els.prompts.addEventListener("cancel", (e) => { e.preventDefault(); closePrompts
 els.cancel.onclick = () => els.settings.close();
 els.save.onclick = inDialog(els.keymsg, saveSettings);  // a folder that can't be found is said in the dialog
 els.wOn.onchange = () => (els.wFields.hidden = !els.wOn.checked);
+els.wAuto.onchange = showAutostart;
 els.wPick.onclick = inDialog(els.keymsg, async () => {
   const { folder } = await api("pick-folder");
   if (folder) els.wFolder.value = folder;

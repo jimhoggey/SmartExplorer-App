@@ -75,12 +75,31 @@ def test_spawn_starts_the_watch_command_detached(monkeypatch):
     seen = {}
     watch.request_stop()
     watch.spawn(popen=lambda argv, **kw: seen.update(argv=argv, kw=kw))
-    assert seen["argv"] == autostart.watch_command()
+    assert seen["argv"] == autostart.watch_command(now=True)  # started from the window: no start-up wait
+    assert seen["argv"][-2:] == ["--watch", "--now"]
     assert seen["kw"]["stdout"] == subprocess.DEVNULL
     assert ("start_new_session" in seen["kw"]) == (sys.platform != "win32")
     assert not (watch.watch_dir() / "stop").exists()
 
 
 def test_desktop_watch_flag_runs_the_watcher(monkeypatch):
-    monkeypatch.setattr(watch, "main", lambda: 7)
-    assert desktop.main(["--watch"]) == 7
+    calls = []
+    monkeypatch.setattr(watch, "main", lambda now=False: calls.append(now) or 7)
+    assert desktop.main(["--watch"]) == 7 and desktop.main(["--watch", "--now"]) == 7
+    assert calls == [False, True]
+
+
+def test_main_now_skips_the_start_up_wait(monkeypatch):
+    made = []
+
+    class W:
+        def __init__(self, startup=True):
+            made.append(startup)
+
+        def tick(self):
+            return False
+
+    monkeypatch.setattr(watch, "Watcher", W)
+    watch.main(sleep=lambda s: None, now=True)
+    watch.main(sleep=lambda s: None)
+    assert made == [False, True]
