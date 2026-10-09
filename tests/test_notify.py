@@ -63,14 +63,29 @@ def test_mac_login_item_is_a_launch_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(autostart.sys, "platform", "darwin")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))  # where Windows (CI) finds the home folder
+    calls = []
+    run = lambda argv, **kw: calls.append(argv) or subprocess.CompletedProcess(argv, 0, b"", b"")
     assert not autostart.enabled()
-    assert autostart.enable() is None and autostart.enabled()
+    assert autostart.enable(run=run) is None and autostart.enabled()
     agent = tmp_path / "Library" / "LaunchAgents" / (autostart.MAC_LABEL + ".plist")
     data = plistlib.loads(agent.read_bytes())
     assert data["Label"] == autostart.MAC_LABEL and data["RunAtLoad"] is True
     assert data["ProgramArguments"] == autostart.watch_command()  # at login: with the start-up wait
-    autostart.disable()
-    assert not agent.exists() and not autostart.enabled()
+    # registered with macOS now, so it shows in Login Items without a restart
+    assert [c[:2] for c in calls] == [["launchctl", "bootout"], ["launchctl", "bootstrap"]] and calls[1][-1] == str(agent)
+    calls.clear()
+    autostart.disable(run=run)
+    assert not agent.exists() and not autostart.enabled() and calls[0][:2] == ["launchctl", "bootout"]
+
+
+def test_show_opens_the_start_up_items(monkeypatch):
+    seen = []
+    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    autostart.show(popen=lambda argv, **kw: seen.append(argv))
+    assert seen[-1] == ["open", autostart.MAC_SETTINGS]
+    monkeypatch.setattr(autostart.sys, "platform", "win32")
+    autostart.show(popen=lambda argv, **kw: seen.append(argv))
+    assert seen[-1] == ["explorer", "shell:startup"]
 
 
 def test_autostart_creates_and_removes_the_shortcut(monkeypatch, tmp_path):

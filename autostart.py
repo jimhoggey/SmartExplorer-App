@@ -15,6 +15,7 @@ import notify
 
 NAME = "Smart Explorer (background).lnk"  # packaging/windows-installer.iss removes this name on uninstall
 MAC_LABEL = "com.jimhoggey.smartexplorer.watch"
+MAC_SETTINGS = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"  # Login Items, as Booth Check opens it
 SCRIPT = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:SE_LNK); "
           "$s.TargetPath = $env:SE_TARGET; $s.Arguments = $env:SE_ARGS; "
           "$s.WorkingDirectory = $env:SE_DIR; $s.Save()")
@@ -60,6 +61,11 @@ def enable(run=subprocess.run):
             shortcut().write_bytes(plistlib.dumps({"Label": MAC_LABEL, "ProgramArguments": argv, "RunAtLoad": True}))
         except OSError as e:
             return why % e
+        # Hand it to macOS now, as signing in would, so it is listed in Login Items at
+        # once rather than after a restart. A copy already watching keeps the lock, so
+        # the one this starts simply exits. Should this fail, the file still loads at sign-in.
+        _launchctl(run, "bootout", "%s/%s" % (_gui(), MAC_LABEL))
+        _launchctl(run, "bootstrap", _gui(), str(shortcut()))
         return None
     shortcut().parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, SE_LNK=str(shortcut()), SE_TARGET=argv[0], SE_ARGS=subprocess.list2cmdline(argv[1:]),
@@ -74,9 +80,33 @@ def enable(run=subprocess.run):
     return None
 
 
-def disable():
-    if available():
-        try:
-            shortcut().unlink()
-        except FileNotFoundError:
-            pass
+def _gui():
+    """launchd's domain for this user's sign-in session (getuid exists only on Mac and Linux)."""
+    return "gui/%d" % getattr(os, "getuid", lambda: 0)()
+
+
+def _launchctl(run, *args):
+    try:
+        run(["launchctl"] + list(args), capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def disable(run=subprocess.run):
+    if not available():
+        return
+    if sys.platform == "darwin" and shortcut().exists():
+        _launchctl(run, "bootout", "%s/%s" % (_gui(), MAC_LABEL))
+    try:
+        shortcut().unlink()
+    except FileNotFoundError:
+        pass
+
+
+def show(popen=subprocess.Popen):
+    """Open where the start-up entry can be seen: System Settings' Login Items on a
+    Mac, the Startup folder on Windows."""
+    if sys.platform == "darwin":
+        popen(["open", MAC_SETTINGS])
+    elif sys.platform == "win32":
+        popen(["explorer", "shell:startup"])
