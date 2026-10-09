@@ -72,16 +72,10 @@ header {
   position: sticky; top: 0; z-index: 4;
 }
 .brand { display: flex; align-items: center; gap: 11px; }
-.mark {
-  width: 32px; height: 32px; border-radius: 9px; flex: none;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  box-shadow: 0 2px 6px rgba(99, 102, 241, .35);
-  position: relative;
-}
-.mark::after { /* a little sparkle */
-  content: ""; position: absolute; inset: 9px;
-  background: #fff; opacity: .95;
-  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+.mark { /* the app icon itself (scripts/make_icon.py draws it) */
+  width: 32px; height: 32px; border-radius: 7px; flex: none;
+  background: url("icon.svg") center / cover no-repeat;
+  box-shadow: 0 2px 6px rgba(67, 56, 202, .3);
 }
 h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; }
 .tagline { margin: 1px 0 0; font-size: 12.5px; color: var(--mute); }
@@ -326,10 +320,12 @@ dialog .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .wstatus { margin: 0 0 12px; font-size: 13px; color: var(--mute); }
 .wnote { margin: -6px 0 14px; font-size: 12.5px; color: var(--mute); }
 .wnote:empty { display: none; }
-.wstatus button.link {
+.wnote.ok { color: var(--ok); }
+.wnote button.link, .wstatus button.link {
   padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
+dialog input.bad { border-color: var(--err); box-shadow: 0 0 0 3px rgba(217, 45, 32, .14); }
 #updateMsg:empty { display: none; }
 
 /* ---------- update banner ---------- */

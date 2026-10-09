@@ -13,6 +13,7 @@ Smart Explorer names new slides and videos for ProPresenter by itself. Files put
 | The message says | What to do |
 |---|---|
 | it can't find the folder | Check Google Drive is running (its icon is near the clock) and signed in. |
+| Google Drive isn't running | Open Google Drive from the Start menu and sign in if it asks. The message goes away by itself. |
 | it can't reach the internet | Check the internet. Smart Explorer tries again by itself. |
 | OpenRouter didn't accept the key, or is out of credit | Tell the tech lead. The files keep their old names until it's fixed, and they still work in ProPresenter. |
 | it has reached this month's limit | Tell the tech lead. |

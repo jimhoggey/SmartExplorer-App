@@ -17,6 +17,7 @@ from pathlib import Path
 import autostart
 import config
 import conventions
+import drive as gdrive
 import known
 import namer
 import notify
@@ -34,11 +35,14 @@ CHECK_AGAIN = {"connection": 300, "key": 900, "credit": 900}  # seconds before t
 FOLDER_GRACE = 120  # how long the folder may be missing or unreadable (a Drive restart) before it is said
 FORGET = 600  # a known file's name is forgotten once it has been gone from the folder this long
 LOCK_TRIES = 8  # a quarter of a second apart: the window's running() check holds the lock for a moment
+DRIVE_EVERY = 30  # seconds between looks at whether Google Drive is running
 LOG_LIMIT = 1_000_000  # bytes; then the log starts again, keeping one old file
 
 PROBLEMS = {  # each is said once, and again only after it cleared and came back
     "folder": "Smart Explorer can't find {folder}. Check Google Drive is running and signed in.",
     "listing": "Smart Explorer can't open {folder}. Check Google Drive is running and signed in.",
+    "drive": "Google Drive isn't running on this computer, so new files can't arrive in {folder}. "
+             "Open Google Drive; Smart Explorer carries on by itself.",
     "nokey": "Smart Explorer has no OpenRouter key. Open Smart Explorer → Settings to add one.",
     "connection": "Smart Explorer can't reach the internet, so new files aren't renamed yet. It will try again by itself.",
     "key": "OpenRouter didn't accept the key. Open Smart Explorer → Settings to fix it.",
@@ -186,9 +190,11 @@ class Watcher:
     naming steps, the free check and notifications can be passed in, so tests run it
     without waiting or OpenRouter."""
 
-    def __init__(self, clock=time.time, say=None, read=None, name=None, check=None, startup=True):
+    def __init__(self, clock=time.time, say=None, read=None, name=None, check=None, startup=True, drive=None):
         self.clock = clock
         self.startup = startup  # started with the computer: wait for Google Drive first
+        self.drive = drive or gdrive.running  # True, False, or None when it can't tell
+        self.drive_up, self.drive_asked, self.drive_down_since = None, float("-inf"), None
         self.say = say or _say
         self.read = read or _read
         self.name = name or _name
@@ -246,12 +252,13 @@ class Watcher:
         self._clear("listing")
         self._track(now, current)
         self._forget_absent(now, listing)
+        self._check_drive(s, now, wait)
         left = self.started + wait - now
         if left > 0:
             return self._status("waiting", "Waiting for Google Drive, %d min left" % math.ceil(left / 60))
         if not self.checked:
             self.checked = True
-            if not self.seen:
+            if not self.seen and self.drive_up is not False:  # with Drive off, "no new files" would mislead
                 self.say("Checked %s: no new files." % folder.name)
         ready = self._ready(now)
         settling = [p for p in self.seen if p not in ready and self._id(p) not in self.given_up
@@ -275,7 +282,31 @@ class Watcher:
     def mark_stopped(self):
         self._status("stopped", "Background renaming stopped")
 
+    def _check_drive(self, s, now, wait):
+        """When the folder is in Google Drive, look every DRIVE_EVERY seconds whether
+        Drive is running, and say once if it isn't: after the start-up wait plus
+        FOLDER_GRACE, and once it has been off for FOLDER_GRACE. Renaming carries on:
+        files already here can be renamed, and Drive syncs the names when it is back."""
+        if not gdrive.is_drive_folder(self.folder):
+            self.drive_up, self.drive_down_since = None, None
+            self._clear("drive")
+            return
+        if now - self.drive_asked >= DRIVE_EVERY:
+            self.drive_asked = now
+            self.drive_up = self.drive()
+        if self.drive_up is not False:
+            self.drive_down_since = None
+            self._clear("drive")
+            return
+        if self.drive_down_since is None:
+            self.drive_down_since = now
+            log("Google Drive isn't running")
+        if now - self.started >= wait + FOLDER_GRACE and now - self.drive_down_since >= FOLDER_GRACE:
+            self._problem("drive", s)
+
     def _status(self, state, message):
+        if state == "watching" and "drive" in self.problems:
+            state = "warning"  # watching, but nothing new can arrive
         data = {"state": state, "message": message, "folder": str(self.folder or ""), "heartbeat": time.time(),
                 "last_batch": self.last_batch, "problems": sorted(self.problems)}
         try:
@@ -286,6 +317,8 @@ class Watcher:
 
     def _watching(self):
         text = "Watching %s" % self.folder.name
+        if "drive" in self.problems:
+            return text + " · Google Drive isn't running"
         if self.last_batch:
             text += " · last batch %s, %s" % (_clock_text(self.last_batch["at"]), _plural(self.last_batch["count"], "file"))
         return text

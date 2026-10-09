@@ -176,6 +176,85 @@ def test_a_short_disappearance_mid_run_is_not_announced(folder):
     assert fake.said.count(watch.PROBLEMS["folder"].format(folder="Sunday Media")) == 1
 
 
+@pytest.fixture
+def drive_folder(tmp_path):
+    d = tmp_path / "My Drive" / "Sunday Media"
+    d.mkdir(parents=True)
+    config.save(key="sk-test", watch={"enabled": True, "folder": str(d), "startup_wait_min": 3})
+    known.record_folder(d)
+    return d
+
+
+class Drive:
+    def __init__(self, up):
+        self.up, self.asked = up, 0
+
+    def __call__(self):
+        self.asked += 1
+        return self.up
+
+
+def drive_watcher(fake, up):
+    from test_watch import Clock
+    d = Drive(up)
+    return watch.Watcher(clock=Clock(), say=fake.say, read=fake.read, name=fake.name, check=fake.check,
+                         drive=d), d
+
+
+def test_google_drive_not_running_is_said_once_after_the_wait(drive_folder):
+    fake = Fake()
+    w, d = drive_watcher(fake, False)
+    run(w, w.clock, 295)  # the start-up wait (3 min) plus 2 minutes for Drive to start
+    assert not any("Google Drive" in s for s in fake.said)
+    run(w, w.clock, 60)
+    msg = watch.PROBLEMS["drive"].format(folder="Sunday Media")
+    assert fake.said.count(msg) == 1 and "Checked Sunday Media: no new files." not in fake.said
+    status = watch.read_status()
+    assert status["state"] == "warning" and status["message"] == "Watching Sunday Media · Google Drive isn't running"
+    run(w, w.clock, 600)
+    assert fake.said.count(msg) == 1
+
+
+def test_files_are_still_renamed_while_google_drive_is_down(drive_folder):
+    fake = Fake()
+    w, d = drive_watcher(fake, False)
+    png(drive_folder / "welcome.png")
+    run(w, w.clock, 300)
+    assert files(drive_folder) == ["Name welcome.png"]
+
+
+def test_the_warning_clears_when_google_drive_starts(drive_folder):
+    fake = Fake()
+    w, d = drive_watcher(fake, False)
+    run(w, w.clock, 400)
+    d.up = True
+    run(w, w.clock, 60)
+    assert watch.read_status()["state"] == "watching" and "drive" not in w.problems
+    d.up = False
+    run(w, w.clock, 200)
+    assert fake.said.count(watch.PROBLEMS["drive"].format(folder="Sunday Media")) == 2
+
+
+def test_google_drive_is_asked_every_30_seconds_and_only_for_drive_folders(drive_folder, tmp_path):
+    fake = Fake()
+    w, d = drive_watcher(fake, True)
+    run(w, w.clock, 300)
+    assert d.asked == 10  # 300 s / 30 s, not once per 5-second look
+    plain = tmp_path / "Media"
+    plain.mkdir()
+    config.save(watch=dict(config.watch_settings(), folder=str(plain)))
+    d.asked = 0
+    run(w, w.clock, 300)
+    assert d.asked == 0
+
+
+def test_unknown_drive_state_says_nothing(drive_folder):
+    fake = Fake()
+    w, d = drive_watcher(fake, None)
+    run(w, w.clock, 900)
+    assert not any("Google Drive" in s for s in fake.said)
+
+
 def test_a_starting_watcher_waits_for_a_brief_lock(monkeypatch):
     real = watch.take_lock
     tries = []

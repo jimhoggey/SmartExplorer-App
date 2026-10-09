@@ -67,7 +67,9 @@ Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)
 
 Smart Explorer can rename new files in one folder by itself, with no window open: made for a Google Drive folder that ProPresenter's playlist watches. Set it up in *Settings → Watch a folder*: the folder, the naming style and a monthly AI limit for background naming (default US$5). Turned on there, it starts watching straight away and keeps running after you close the window.
 
-Tick **Start by itself when the computer starts** and Smart Explorer adds itself to the computer's start-up items (a Startup shortcut on Windows, a login item on a Mac); you don't add it yourself. Only then does **Wait after the computer starts** apply (default 3 minutes): time for Google Drive to download the week's files before anything is renamed.
+Tick **Start by itself when the computer starts** and click **Save**: Smart Explorer adds itself to the computer's start-up items, reads the entry back, and only then shows "✓ Smart Explorer is in this computer's start-up items". You don't add it yourself. **Show** opens where it is listed: the Startup folder on Windows (`Smart Explorer (background)`), *System Settings → General → Login Items → Allow in the Background* on a Mac. Only with start-up ticked does **Wait after the computer starts** apply (default 3 minutes): time for Google Drive to download the week's files before anything is renamed.
+
+When the watched folder is in Google Drive (its path has `My Drive`, `Shared drives` or `Google Drive` in it), Smart Explorer also checks every 30 seconds that Google Drive for desktop is running (`GoogleDriveFS.exe` on Windows, "Google Drive" on a Mac). If it isn't, a notification says so once and the status bar turns red; renaming carries on, and the warning clears by itself when Drive starts. It can tell whether Drive runs, not how far its sync has got.
 
 It works while the computer is awake: a sleeping computer renames nothing until it wakes, so set the ProPresenter computer not to sleep while it is in use.
 
