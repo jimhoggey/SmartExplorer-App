@@ -25,8 +25,20 @@ def main(cmd):
     (cfg / "config.json").write_text(json.dumps({"watch": {"enabled": True, "folder": str(folder), "startup_wait_min": 0}}))
     env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), SMART_EXPLORER_MOCK="1")
     proc = subprocess.Popen(cmd + ["--watch"], env=env)
+    status = cfg / "watch" / "status.json"
     try:
-        time.sleep(5)  # the folder starts empty, so these arrive as new files
+        # Drop the files only once the watcher has looked at the (empty) folder: a slow
+        # start (Windows) must not see them first and record them as already there.
+        for _ in range(60):
+            time.sleep(1)
+            try:
+                if json.loads(status.read_text("utf-8")).get("state") == "watching":
+                    break
+            except (OSError, ValueError):
+                pass
+        else:
+            print("the watcher never started watching")
+            return 1
         for n, color in (("1.png", "red"), ("2.png", "blue")):
             Image.new("RGB", (64 + len(color), 36), color).save(folder / n)
         for _ in range(60):
