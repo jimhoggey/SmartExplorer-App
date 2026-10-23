@@ -651,7 +651,10 @@ function showAutostart() {
 // The watched folders while Settings is open; saved with Save.
 let watchFolders = [];
 const MAX_FOLDERS = 10;
-const folderKey = (p) => p.trim().replace(/[\\/]+$/, "").toLowerCase();  // one folder, whatever the case or a trailing slash
+// A pasted path tidied: Windows' "Copy as path" puts quotes round it.
+const cleanFolder = (p) => (p || "").trim().replace(/^"+|"+$/g, "").trim();
+// One folder, one key, however it is written (as config.folder_key): G:/x, g:\x\ …
+const folderKey = (p) => cleanFolder(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 const folderName = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 
 function renderFolders(bad) {
@@ -683,7 +686,7 @@ function renderFolders(bad) {
 
 // Adds the path in the box (or the one given). Returns an error message, or "".
 function addFolder(path = els.wFolder.value) {
-  path = (path || "").trim();
+  path = cleanFolder(path);
   els.wFolder.classList.remove("bad");
   if (!path) return "Paste a folder's path or click Choose first.";
   if (watchFolders.some((p) => folderKey(p) === folderKey(path))) { els.wFolder.value = ""; return ""; }
@@ -714,7 +717,11 @@ async function saveWatch() {
   if (!watchState || !watchFilled) return true;
   if (els.wFolder.value.trim()) {  // a path typed or chosen but not added yet: add it, don't drop it
     const why = addFolder();
-    if (why) throw new Error(why + " Nothing was saved yet.");
+    if (why) {
+      els.wFolder.classList.add("bad");
+      els.wFolder.focus();
+      throw new Error(why + " Nothing was saved yet.");
+    }
   }
   const d = watchDraft(), s = watchState.settings, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (Object.keys(d).every((k) => same(d[k], s[k]))) return true;
@@ -728,8 +735,8 @@ async function saveWatch() {
   const watched = new Set(s.enabled ? s.folders.map(folderKey) : []);
   const added = d.enabled ? d.folders.filter((f) => !watched.has(folderKey(f))) : [];
   if (added.length) {
-    let counts;
-    try { ({ counts } = await api("watch/preview", { folders: added })); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
+    let counts;  // every folder is checked first, so the confirm never comes before a "can't find" error
+    try { ({ counts } = await api("watch/preview", { folders: d.folders })); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
     const named = d.folders.length > 1;
     const lines = added.map((f) => leftAlone(f, counts[f] || 0, named)).filter(Boolean);
     const msg = `Smart Explorer will rename new files in ${named ? "these folders" : "this folder"} by itself, even with this window closed.`

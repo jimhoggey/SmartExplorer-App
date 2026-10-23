@@ -73,20 +73,35 @@ def _number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+def clean_folder(path):
+    """A pasted folder path, tidied: no spaces around it, no quotes from Windows' "Copy as path"."""
+    return path.strip().strip('"').strip() if isinstance(path, str) else ""
+
+
+def folder_key(path):
+    """One folder, one key, however it is written: G:/My Drive/x, g:\\my drive\\x\\ (as the
+    window compares them too). Windows and the Mac's usual disks ignore case."""
+    return clean_folder(path).replace("\\", "/").rstrip("/").lower()
+
+
+def unique_folders(paths):
+    """Folder paths tidied, each once, in order."""
+    out, seen = [], set()
+    for path in paths:
+        path = clean_folder(path)
+        if path and folder_key(path) not in seen:
+            seen.add(folder_key(path))
+            out.append(path)
+    return out
+
+
 def _folders(saved):
-    """The watched folders: a list, each once (whatever the case or a trailing slash),
-    at most MAX_FOLDERS. A config saved before several folders has one "folder"."""
+    """The watched folders: a list, each once, at most MAX_FOLDERS. A config saved
+    before several folders has one "folder"."""
     raw = saved.get("folders")
     if not isinstance(raw, list):
         raw = [saved.get("folder")]
-    out, seen = [], set()
-    for path in raw:
-        if isinstance(path, str) and path.strip():
-            key = path.strip().rstrip("/\\").lower()
-            if key not in seen:
-                seen.add(key)
-                out.append(path.strip())
-    return out[:MAX_FOLDERS]
+    return unique_folders(raw)[:MAX_FOLDERS]
 
 
 def watch_settings():

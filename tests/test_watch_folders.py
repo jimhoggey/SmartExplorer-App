@@ -114,6 +114,78 @@ def test_a_removed_folder_is_no_longer_watched(two):
     assert files(b) == ["games.png"] and fake.reads == []
 
 
+def test_a_folders_set_growing_during_another_folders_batch_waits_for_its_quiet_minute(two):
+    a, b = two
+    png(a / "giving.png")
+    for n in ("1.png", "2.png"):
+        png(b / n, "blue")
+    fake = Fake()
+
+    def more_arrive():  # Drive brings the rest of B's deck while A is being read
+        if len(fake.reads) == 1:
+            for n in ("3.png", "4.png"):
+                png(b / n, "blue")
+
+    fake.during_read = more_arrive
+    w = start(fake)
+    run(w, w.clock, 300)
+    assert fake.reads == [["giving.png"], ["1.png", "2.png", "3.png", "4.png"]]  # one set, not split
+    assert files(b) == ["01 Name 1.png", "02 Name 2.png", "03 Name 3.png", "04 Name 4.png"]
+
+
+def test_folders_take_turns(two, monkeypatch):
+    monkeypatch.setattr(watch, "MAX_BATCH", 1)
+    a, b = two
+    for n in ("a1.png", "a2.png", "a3.png"):
+        png(a / n)
+    png(b / "b1.png", "blue")
+    fake = Fake()
+    w = start(fake)
+    run(w, w.clock, 120)
+    assert fake.reads[:2] == [["a1.png"], ["b1.png"]]  # B is not kept waiting behind A's backlog
+
+
+def test_multi_folder_waiting_texts_name_the_folder(two):
+    a, b = two
+    fake = Fake()
+    w = start(fake)
+    run(w, w.clock, 10)
+    png(b / "games.png")
+    run(w, w.clock, 20)
+    assert watch.read_status()["message"] == "Found 1 new file in Youth Media. Renaming in 45 s, in case more are on the way."
+    with open(b / "video.mp4", "ab") as f:
+        f.write(b"x")
+    w.tick()
+    assert watch.read_status()["message"] == "Waiting for 1 file to finish downloading in Youth Media"
+
+
+def test_google_drive_text_names_both_drive_folders(tmp_path):
+    a, b = tmp_path / "My Drive" / "Sunday Media", tmp_path / "My Drive" / "Youth Media"
+    a.mkdir(parents=True)
+    b.mkdir()
+    config.save(key="sk-test", watch={"enabled": True, "folders": [str(a), str(b)], "startup_wait_min": 0})
+    fake = Fake()
+    w = watch.Watcher(clock=Clock(), say=fake.say, read=fake.read, name=fake.name, check=fake.check, drive=lambda: False)
+    run(w, w.clock, 200)
+    assert watch.PROBLEMS["drive"].format(folder="Sunday Media and Youth Media") in fake.said
+
+
+def test_removing_a_missing_folder_clears_its_warning_and_last_batch(two):
+    a, b = two
+    png(b / "games.png")
+    fake = Fake()
+    w = start(fake)
+    run(w, w.clock, 90)
+    a.rename(a.with_name("gone"))
+    run(w, w.clock, 200)
+    assert watch.read_status()["state"] == "warning"
+    config.save(watch=dict(config.watch_settings(), folders=[str(a)]))  # Youth Media (and its batch) removed
+    a.with_name("gone").rename(a)
+    run(w, w.clock, 10)
+    status = watch.read_status()
+    assert status["state"] == "watching" and status["message"] == "Watching Sunday Media"
+
+
 def test_failures_are_kept_per_folder(two):
     a, b = two
     png(a / "giving.png")

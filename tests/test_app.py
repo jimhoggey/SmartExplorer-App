@@ -316,6 +316,15 @@ def test_a_bad_folder_in_the_list_is_named_and_nothing_is_saved(client, watcher,
     assert r.status_code == 400 and "Add a folder" in r.get_json()["error"]
 
 
+def test_folders_are_deduplicated_unquoted_and_limited_whether_watching_or_not(client, watcher, folder, tmp_path):
+    w = client.post("/api/watch", json={"enabled": True, "folders": ['"%s"' % folder, str(folder) + "/"] + [str(folder)] * 9})
+    assert w.status_code == 200 and w.get_json()["settings"]["folders"] == [str(folder)]
+    many = [str(tmp_path / ("f%d" % i)) for i in range(12)]
+    r = client.post("/api/watch", json={"enabled": False, "folders": many})
+    assert r.status_code == 400 and "up to 10" in r.get_json()["error"]
+    assert config.watch_settings()["folders"] == [str(folder)]
+
+
 def test_a_just_started_watcher_says_starting(client, watcher, folder):
     w = client.post("/api/watch", json={"enabled": True, "folders": [str(folder)]}).get_json()
     assert w["running"] is False and w["starting"] is True  # the new process needs a moment

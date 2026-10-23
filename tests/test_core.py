@@ -191,6 +191,8 @@ def test_watch_settings_folders_carry_the_old_single_folder_over(tmp_path, monke
     assert config.WATCH_DEFAULTS["folders"] == []
     config.save(watch={"enabled": True, "folder": "/x/Sunday Media"})  # saved before several folders
     assert config.watch_settings()["folders"] == ["/x/Sunday Media"]
+    config.save(watch={"folders": ["G:/My Drive/Sunday", "g:\\my drive\\sunday\\", '"G:\\My Drive\\Youth"']})
+    assert config.watch_settings()["folders"] == ["G:/My Drive/Sunday", "G:\\My Drive\\Youth"]  # Windows spellings, Copy as path quotes
     many = ["/x/A", "/x/a/", 7, "", " ", "/x/B"] + ["/x/F%d" % i for i in range(20)]
     config.save(watch={"folders": many, "folder": "/x/ignored"})
     folders = config.watch_settings()["folders"]

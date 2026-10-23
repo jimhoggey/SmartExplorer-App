@@ -333,6 +333,7 @@ class Watcher:
         self.next_check = 0.0
         self.announced = self.checked = False
         self.last_batch = None
+        self.last_key = None  # the folder batched last: the next look starts with the one after it
 
     @property
     def failures(self):
@@ -400,8 +401,12 @@ class Watcher:
             self.checked = True
             if not any(fw.seen for fw in looked) and self.drive_up is not False:  # Drive off: "no new files" would mislead
                 self.say("Checked %s: no new files." % _names(looked))
+        # At most one batch per look, and folders take turns: a batch can take minutes, and
+        # judging another folder on a look taken before it would split a deck still arriving.
+        keys = [known.key(fw.path) for fw in looked]
+        first = keys.index(self.last_key) + 1 if self.last_key in keys else 0
         busy = None  # what the first folder still waiting on downloads or its quiet minute shows
-        for fw in looked:
+        for fw in looked[first:] + looked[:first]:
             ready = fw.ready(now)
             settling = fw.settling(ready, now)
             where = self._where(fw)
@@ -419,6 +424,8 @@ class Watcher:
             if problem:
                 return self._status("paused", "Paused: " + self._paused(problem, s))
             self._batch(s, fw, ready[:MAX_BATCH], now)
+            self.last_key = known.key(fw.path)
+            return self._status("watching", self._watching(troubled))
         if busy:
             return self._status(*busy)
         return self._status("watching", self._watching(troubled))
@@ -469,7 +476,7 @@ class Watcher:
             return text + " · " + "; ".join(missing)
         if "drive" in self.problems:
             return text + " · Google Drive isn't running"
-        if self.last_batch:
+        if self.last_batch and self.last_batch.get("key") in self.folders:  # not a folder no longer watched
             text += " · last batch %s, %s" % (_clock_text(self.last_batch["at"]), _plural(self.last_batch["count"], "file"))
             if len(fws) > 1:
                 text += " in %s" % self.last_batch["folder"]
@@ -545,7 +552,7 @@ class Watcher:
         later = [names[f] for f in failed if f not in fw.given_up]
         fw.batches += 1
         if done:
-            self.last_batch = {"at": now, "count": len(done), "folder": fw.name}
+            self.last_batch = {"at": now, "count": len(done), "folder": fw.name, "key": known.key(fw.path)}
         if done or later:
             self.say(_done_text(list(done.values()), later, where))
         if gave_up:

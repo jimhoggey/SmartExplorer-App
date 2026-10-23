@@ -280,7 +280,7 @@ def _folder_error(path, e=None):
 
 
 def _paths(value):
-    return [f.strip() for f in value if isinstance(f, str) and f.strip()] if isinstance(value, list) else []
+    return config.unique_folders(value) if isinstance(value, list) else []
 
 
 @app.post("/api/watch/preview")
@@ -316,17 +316,17 @@ def api_watch_save():
     for k in ("startup_wait_min", "monthly_limit_usd"):
         if isinstance(body.get(k), (int, float)) and not isinstance(body.get(k), bool):
             new[k] = body[k]
+    if len(new["folders"]) > config.MAX_FOLDERS:  # whether watching is on or off: never drop folders silently
+        return jsonify(error="Smart Explorer can watch up to %d folders." % config.MAX_FOLDERS), 400
     if new["enabled"]:
         if not new["folders"]:
             return jsonify(error="Add a folder to watch first."), 400
-        if len(new["folders"]) > config.MAX_FOLDERS:
-            return jsonify(error="Smart Explorer can watch up to %d folders." % config.MAX_FOLDERS), 400
         for folder in new["folders"]:
             if not _is_folder(folder):
                 return _folder_error(folder)
-        watched = {known.key(f) for f in old["folders"]} if old["enabled"] else set()
+        watched = {config.folder_key(f) for f in old["folders"]} if old["enabled"] else set()
         for folder in new["folders"]:
-            if known.key(folder) not in watched:
+            if config.folder_key(folder) not in watched:  # compared as the window compares them
                 try:
                     known.record_folder(folder)
                 except OSError as e:

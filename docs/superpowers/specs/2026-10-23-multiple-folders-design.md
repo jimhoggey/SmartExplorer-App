@@ -51,10 +51,16 @@ and drops `folder`. `known.json` is already per folder: unchanged.
   watcher keeps for its folder: `seen`, `activity`, `descs`, `failures`, `given_up`,
   `handled`, `absent`, `unavailable_since`, `batches`.
 - Every 5 s the watcher reads the settings, adds a `FolderWatch` for a new folder
-  and drops one for a removed folder, then looks at each folder in list order and
-  runs any batch that is due, folder by folder. A batch only ever holds one
+  and drops one for a removed folder, then looks at each folder and runs **at most
+  one batch per look**, the folders taking turns (the one after the folder batched
+  last goes first). A batch can take minutes; judging another folder on a look
+  taken before it would split a deck still arriving. A batch only ever holds one
   folder's files: names fit that folder's existing names (`scanner.siblings`), and
   Keep order numbers that folder's set.
+- Folder paths are compared one way everywhere (`config.folder_key`, and the same in
+  the window): case, `/` or `\`, a trailing slash and the quotes of Windows' "Copy as
+  path" don't make a second folder. The 10-folder limit applies whether watching is
+  on or off.
 - The start-up wait, the free key check before each batch, the monthly limit, the
   no-key check and the Google Drive check are shared, as today.
 - A missing or unreadable folder pauses **that folder only**, with today's grace
