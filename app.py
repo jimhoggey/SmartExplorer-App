@@ -58,7 +58,6 @@ def status():
 
 
 NOT_FOUND = "Can't find that folder. Check the spelling, or use Choose folder."
-CANT_OPEN = "Can't open that folder (%s). Check Google Drive is running, or choose another folder."
 
 
 def paths_or_none():
@@ -229,8 +228,9 @@ def api_rename():
     pairs = renamer.plan(request.get_json()["items"])
     out = renamer.apply(pairs)
     w = config.watch_settings()
-    if w["enabled"] and w["folder"]:  # renamed here, so background renaming leaves them alone
-        known.add_paths(w["folder"], [new for _, new in pairs[:out["renamed"]]])
+    if w["enabled"]:  # renamed here, so background renaming leaves them alone, in whichever watched folder
+        for folder in w["folders"]:
+            known.add_paths(folder, [new for _, new in pairs[:out["renamed"]]])
     return jsonify(dict(out, moved=pairs[:out["renamed"]]))
 
 
@@ -269,43 +269,68 @@ def api_watch():
     return jsonify(watch_state())
 
 
+def _folder_error(path, e=None):
+    """Why a folder can't be watched, naming it, with the path so the window can mark its row."""
+    name = Path(path).name or path
+    if e is None:
+        msg = "Can't find %s. Check the spelling, or use Choose." % name
+    else:
+        msg = "Can't open %s (%s). Check Google Drive is running, or choose another folder." % (name, e.strerror or e)
+    return jsonify(error=msg, folder=path), 400
+
+
+def _paths(value):
+    return [f.strip() for f in value if isinstance(f, str) and f.strip()] if isinstance(value, list) else []
+
+
 @app.post("/api/watch/preview")
 def api_watch_preview():
-    folder = (request.get_json(silent=True) or {}).get("folder")
-    if not _is_folder(folder):
-        return jsonify(error=NOT_FOUND), 400
-    try:
-        return jsonify(count=len(known.visible(folder)))
-    except OSError as e:
-        return jsonify(error=CANT_OPEN % (e.strerror or e)), 400
+    """How many files each folder holds now: the ones that would be left as they are."""
+    counts = {}
+    for folder in _paths((request.get_json(silent=True) or {}).get("folders")):
+        if not _is_folder(folder):
+            return _folder_error(folder)
+        try:
+            counts[folder] = len(known.visible(folder))
+        except OSError as e:
+            return _folder_error(folder, e)
+    return jsonify(counts=counts)
 
 
 @app.post("/api/watch")
 def api_watch_save():
-    """Save the Watch a folder settings, then start or stop background renaming to
-    match. Turning it on, or changing the folder, records the files already there,
-    which are then left as they are."""
+    """Save the Watch folders settings, then start or stop background renaming to
+    match. Turning it on, or adding a folder, records the files already in each newly
+    added folder, which are then left as they are. A folder that can't be found or
+    opened is named in the error, and nothing is saved."""
     body = request.get_json(silent=True) or {}
     old = config.watch_settings()
     new = dict(old)
     for k in ("enabled", "autostart"):
         if isinstance(body.get(k), bool):
             new[k] = body[k]
-    if isinstance(body.get("folder"), str):
-        new["folder"] = body["folder"].strip()
+    if isinstance(body.get("folders"), list):
+        new["folders"] = _paths(body["folders"])
     if body.get("profile") in conventions.PROFILES:
         new["profile"] = body["profile"]
     for k in ("startup_wait_min", "monthly_limit_usd"):
         if isinstance(body.get(k), (int, float)) and not isinstance(body.get(k), bool):
             new[k] = body[k]
     if new["enabled"]:
-        if not _is_folder(new["folder"]):
-            return jsonify(error=NOT_FOUND), 400
-        if not old["enabled"] or not known.same_folder(old["folder"], new["folder"]):
-            try:
-                known.record_folder(new["folder"])
-            except OSError as e:
-                return jsonify(error=CANT_OPEN % (e.strerror or e)), 400
+        if not new["folders"]:
+            return jsonify(error="Add a folder to watch first."), 400
+        if len(new["folders"]) > config.MAX_FOLDERS:
+            return jsonify(error="Smart Explorer can watch up to %d folders." % config.MAX_FOLDERS), 400
+        for folder in new["folders"]:
+            if not _is_folder(folder):
+                return _folder_error(folder)
+        watched = {known.key(f) for f in old["folders"]} if old["enabled"] else set()
+        for folder in new["folders"]:
+            if known.key(folder) not in watched:
+                try:
+                    known.record_folder(folder)
+                except OSError as e:
+                    return _folder_error(folder, e)
     with LOCK:
         config.save(watch=new)
     new = config.watch_settings()

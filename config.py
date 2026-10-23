@@ -62,26 +62,42 @@ def save(**kv):
     return data
 
 
-# Background renaming (Settings, Watch a folder), saved under "watch". Missing or
+# Background renaming (Settings, Watch folders), saved under "watch". Missing or
 # wrong values fall back to these.
-WATCH_DEFAULTS = {"enabled": False, "folder": "", "profile": "propresenter", "startup_wait_min": 3,
+WATCH_DEFAULTS = {"enabled": False, "folders": [], "profile": "propresenter", "startup_wait_min": 3,
                   "monthly_limit_usd": 5.0, "autostart": False}
+MAX_FOLDERS = 10
 
 
 def _number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+def _folders(saved):
+    """The watched folders: a list, each once (whatever the case or a trailing slash),
+    at most MAX_FOLDERS. A config saved before several folders has one "folder"."""
+    raw = saved.get("folders")
+    if not isinstance(raw, list):
+        raw = [saved.get("folder")]
+    out, seen = [], set()
+    for path in raw:
+        if isinstance(path, str) and path.strip():
+            key = path.strip().rstrip("/\\").lower()
+            if key not in seen:
+                seen.add(key)
+                out.append(path.strip())
+    return out[:MAX_FOLDERS]
+
+
 def watch_settings():
     saved = load().get("watch")
     saved = saved if isinstance(saved, dict) else {}
-    out = dict(WATCH_DEFAULTS)
+    out = dict(WATCH_DEFAULTS, folders=_folders(saved))
     for k in ("enabled", "autostart"):
         if isinstance(saved.get(k), bool):
             out[k] = saved[k]
-    for k in ("folder", "profile"):
-        if isinstance(saved.get(k), str) and saved[k].strip():
-            out[k] = saved[k].strip()
+    if isinstance(saved.get("profile"), str) and saved["profile"].strip():
+        out["profile"] = saved["profile"].strip()
     if _number(saved.get("startup_wait_min")):
         out["startup_wait_min"] = min(max(int(saved["startup_wait_min"]), 0), 30)
     if _number(saved.get("monthly_limit_usd")):

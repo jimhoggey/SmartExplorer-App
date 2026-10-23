@@ -19,12 +19,13 @@ def _path():
     return config.CONFIG_DIR / "watch" / "known.json"
 
 
-def _key(folder):
+def key(folder):
+    """One folder, one key: whatever the spelling of its path (as known.json files it)."""
     return os.path.normcase(os.path.abspath(str(folder)))
 
 
 def same_folder(a, b):
-    return bool(str(a or "")) and bool(str(b or "")) and _key(a) == _key(b)
+    return bool(str(a or "")) and bool(str(b or "")) and key(a) == key(b)
 
 
 def fingerprint(path):
@@ -41,20 +42,20 @@ def _load():
 
 
 def _entry(data, folder):
-    e = data.get(_key(folder))
+    e = data.get(key(folder))
     e = e if isinstance(e, dict) else {}
     return ({n for n in e.get("names", []) if isinstance(n, str)},
             {f for f in e.get("prints", []) if isinstance(f, str)})
 
 
 def _save(data, folder, names, prints):
-    data[_key(folder)] = {"names": sorted(names), "prints": sorted(prints)}
+    data[key(folder)] = {"names": sorted(names), "prints": sorted(prints)}
     config.write_json(_path(), data)
 
 
 def has_record(folder):
     """Whether the folder was recorded (when watching was turned on for it)."""
-    return isinstance(_load().get(_key(folder)), dict)
+    return isinstance(_load().get(key(folder)), dict)
 
 
 def names(folder):

@@ -252,7 +252,7 @@ def test_a_start_up_item_is_checked_after_adding_it(client, watcher, folder, mon
     there = {"on": False}
     monkeypatch.setattr(autostart, "enable", lambda: None)  # said it worked…
     monkeypatch.setattr(autostart, "enabled", lambda: there["on"])  # …but nothing is there
-    w = client.post("/api/watch", json={"enabled": True, "folder": str(folder), "autostart": True}).get_json()
+    w = client.post("/api/watch", json={"enabled": True, "folders": [str(folder)], "autostart": True}).get_json()
     assert "start-up items" in w["error"] and w["autostart_on"] is False
     there["on"] = True
     w = client.post("/api/watch", json={"monthly_limit_usd": 6}).get_json()
@@ -266,17 +266,28 @@ def test_start_up_items_can_be_shown(client, watcher, monkeypatch):
     assert client.post("/api/watch/startup-items", json={}).status_code == 200 and shown == [1]
 
 
-def test_watch_preview_counts_what_would_be_left_alone(client, watcher, folder):
-    assert client.post("/api/watch/preview", json={"folder": str(folder)}).get_json() == {"count": 2}
-    assert client.post("/api/watch/preview", json={"folder": "relative"}).status_code == 400
+@pytest.fixture
+def second(tmp_path):
+    d = tmp_path / "Youth Media"
+    d.mkdir()
+    Image.new("RGB", (40, 20), "purple").save(d / "games.png")
+    return d
 
 
-def test_turning_watching_on_records_the_folder_and_starts(client, watcher, folder):
+def test_watch_preview_counts_what_would_be_left_alone(client, watcher, folder, second):
+    r = client.post("/api/watch/preview", json={"folders": [str(folder), str(second)]}).get_json()
+    assert r == {"counts": {str(folder): 2, str(second): 1}}
+    r = client.post("/api/watch/preview", json={"folders": [str(folder), "relative"]})
+    assert r.status_code == 400 and r.get_json()["folder"] == "relative"
+
+
+def test_turning_watching_on_records_the_folders_and_starts(client, watcher, folder, second):
     import known
-    w = client.post("/api/watch", json={"enabled": True, "folder": str(folder), "startup_wait_min": 5,
+    w = client.post("/api/watch", json={"enabled": True, "folders": [str(folder), str(second)], "startup_wait_min": 5,
                                         "monthly_limit_usd": 8, "autostart": True}).get_json()
     assert w["settings"]["enabled"] is True and w["settings"]["startup_wait_min"] == 5
-    assert known.new_files(folder) == []  # what was there is left alone
+    assert w["settings"]["folders"] == [str(folder), str(second)]
+    assert known.new_files(folder) == [] and known.new_files(second) == []  # what was there is left alone
     assert watcher["spawn"] == 1 and watcher["auto"] == ["on"]
     watcher["running"] = True
     client.post("/api/watch", json={"monthly_limit_usd": 9})
@@ -285,8 +296,28 @@ def test_turning_watching_on_records_the_folder_and_starts(client, watcher, fold
     assert watcher["stop"] == 1 and watcher["auto"][-1] == "off"
 
 
+def test_adding_a_folder_records_only_the_new_one(client, watcher, folder, second):
+    import known
+    client.post("/api/watch", json={"enabled": True, "folders": [str(folder)]})
+    Image.new("RGB", (41, 20), "green").save(folder / "arrived.png")  # new since watching began
+    client.post("/api/watch", json={"folders": [str(folder), str(second)]})
+    assert [p.name for p, _ in known.new_files(folder)] == ["arrived.png"]  # still new: not recorded again
+    assert known.new_files(second) == []
+    w = client.post("/api/watch", json={"folders": [str(second)]}).get_json()
+    assert w["settings"]["folders"] == [str(second)]
+
+
+def test_a_bad_folder_in_the_list_is_named_and_nothing_is_saved(client, watcher, folder, tmp_path):
+    r = client.post("/api/watch", json={"enabled": True, "folders": [str(folder), str(tmp_path / "Kids")]})
+    body = r.get_json()
+    assert r.status_code == 400 and body["folder"] == str(tmp_path / "Kids") and "Kids" in body["error"]
+    assert not config.watch_settings()["enabled"] and config.watch_settings()["folders"] == []
+    r = client.post("/api/watch", json={"enabled": True, "folders": []})
+    assert r.status_code == 400 and "Add a folder" in r.get_json()["error"]
+
+
 def test_a_just_started_watcher_says_starting(client, watcher, folder):
-    w = client.post("/api/watch", json={"enabled": True, "folder": str(folder)}).get_json()
+    w = client.post("/api/watch", json={"enabled": True, "folders": [str(folder)]}).get_json()
     assert w["running"] is False and w["starting"] is True  # the new process needs a moment
     assert client.get("/api/watch").get_json()["starting"] is True
 
@@ -298,21 +329,21 @@ def test_a_folder_that_cannot_be_opened_is_refused(client, watcher, folder, monk
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(known, "visible", denied)
-    r = client.post("/api/watch/preview", json={"folder": str(folder)})
+    r = client.post("/api/watch/preview", json={"folders": [str(folder)]})
     assert r.status_code == 400 and "open" in r.get_json()["error"]
-    r = client.post("/api/watch", json={"enabled": True, "folder": str(folder)})
+    r = client.post("/api/watch", json={"enabled": True, "folders": [str(folder)]})
     assert r.status_code == 400 and not config.watch_settings()["enabled"] and watcher["spawn"] == 0
 
 
 def test_watching_a_missing_folder_is_refused(client, watcher, tmp_path):
-    r = client.post("/api/watch", json={"enabled": True, "folder": str(tmp_path / "nope")})
+    r = client.post("/api/watch", json={"enabled": True, "folders": [str(tmp_path / "nope")]})
     assert r.status_code == 400 and not config.watch_settings()["enabled"]
 
 
 def test_start_button_starts_a_stopped_watcher(client, watcher, folder):
     client.post("/api/watch/start", json={})
     assert watcher["spawn"] == 0  # watching is off
-    client.post("/api/watch", json={"enabled": True, "folder": str(folder)})
+    client.post("/api/watch", json={"enabled": True, "folders": [str(folder)]})
     client.post("/api/watch/start", json={})
     assert watcher["spawn"] == 2
 
@@ -325,9 +356,11 @@ def test_spend_totals_include_background_renaming(client, watcher):
     assert client.get("/api/watch").get_json()["spent_month"] == pytest.approx(0.4)
 
 
-def test_window_renames_in_the_watched_folder_become_known(client, watcher, folder):
+def test_window_renames_in_any_watched_folder_become_known(client, watcher, folder, second):
     import known
-    client.post("/api/watch", json={"enabled": True, "folder": str(folder)})
+    client.post("/api/watch", json={"enabled": True, "folders": [str(folder), str(second)]})
     Image.new("RGB", (40, 20), "green").save(folder / "c.png")
-    client.post("/api/rename", json={"items": [{"path": str(folder / "c.png"), "new_name": "Giving"}]})
-    assert known.new_files(folder) == []
+    Image.new("RGB", (42, 20), "green").save(second / "d.png")
+    client.post("/api/rename", json={"items": [{"path": str(folder / "c.png"), "new_name": "Giving"},
+                                               {"path": str(second / "d.png"), "new_name": "Games"}]})
+    assert known.new_files(folder) == [] and known.new_files(second) == []

@@ -1,10 +1,11 @@
-"""Background renaming: watch one folder that Google Drive keeps in sync and rename
-every new file in it with the normal naming, with nobody at the computer.
+"""Background renaming: watch folders that Google Drive keeps in sync and rename
+every new file in them with the normal naming, with nobody at the computer.
 
 `Smart Explorer --watch` runs it; Windows starts it at sign-in when Settings says so.
-The window sets it up (Settings, Watch a folder), shows what it is doing from
+The window sets it up (Settings, Watch folders), shows what it is doing from
 status.json and stops it with the stop file. Design:
-docs/superpowers/specs/2026-10-08-background-renaming-design.md
+docs/superpowers/specs/2026-10-08-background-renaming-design.md (one folder) and
+docs/superpowers/specs/2026-10-23-multiple-folders-design.md (several).
 """
 import json
 import math
@@ -25,14 +26,14 @@ import prep
 import renamer
 import scanner
 
-POLL = 5  # seconds between looks at the folder
+POLL = 5  # seconds between looks at the folders
 SETTLE = 10  # a file is ready once its size and modified time have held this long
-FIRST_GAP, GAP = 60, 20  # quiet seconds before the first batch after start-up, and before later ones
+FIRST_GAP, GAP = 60, 20  # quiet seconds before a folder's first batch after start-up, and before later ones
 MAX_BATCH = 200
 RETRY = (300, 1800)  # a file that failed is tried again after 5 minutes, then after 30
 PAID_TRIES = 2  # paid attempts per file per start-up
 CHECK_AGAIN = {"connection": 300, "key": 900, "credit": 900}  # seconds before the free check runs again
-FOLDER_GRACE = 120  # how long the folder may be missing or unreadable (a Drive restart) before it is said
+FOLDER_GRACE = 120  # how long a folder may be missing or unreadable (a Drive restart) before it is said
 FORGET = 600  # a known file's name is forgotten once it has been gone from the folder this long
 LOCK_TRIES = 8  # a quarter of a second apart: the window's running() check holds the lock for a moment
 DRIVE_EVERY = 30  # seconds between looks at whether Google Drive is running
@@ -176,19 +177,146 @@ def _clock_text(t):
     return "%d:%02d%s" % (lt.tm_hour % 12 or 12, lt.tm_min, "am" if lt.tm_hour < 12 else "pm")
 
 
-def _done_text(ready, later):
+def _done_text(ready, later, where=""):
+    """where: " in Youth Media" when several folders are watched, else empty."""
     if not ready:
-        return "%s couldn't be named yet: %s" % (_plural(len(later), "file"), _list(later))
-    text = "%s renamed and ready for ProPresenter" % _plural(len(ready), "file")
+        return "%s couldn't be named yet%s: %s" % (_plural(len(later), "file"), where, _list(later))
+    text = "%s renamed and ready for ProPresenter%s" % (_plural(len(ready), "file"), where)
     if later:
         return "%s. %d couldn't be named yet: %s" % (text, len(later), _list(later))
     return "%s: %s." % (text, _list(ready))
 
 
+def _names(folders):
+    """How a message names folders: "Sunday Media", "Sunday Media and Youth Media", "3 folders"."""
+    names = [f.name for f in folders]
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return "%s and %s" % tuple(names)
+    return "%d folders" % len(names)
+
+
+class FolderWatch:
+    """What background renaming keeps for one watched folder: its new files, their quiet
+    minute, paid descriptions, retries and record. A file is known by its id,
+    (path, print): by print alone, duplicates in one batch would share everything."""
+
+    def __init__(self, path, now):
+        self.path = Path(path)
+        self.name = self.path.name or str(self.path)
+        self.seen = {}  # path -> {"print", "since"}: each new file and when it last changed
+        self.activity = now  # when a new file last appeared or changed
+        self.descs = {}  # id -> description already paid for
+        self.failures = {}  # id -> {"count", "paid", "next"}
+        self.given_up = set()  # ids left alone until the next start-up
+        self.handled = set()  # ids renamed or left alone this run, even if known.json could not record them
+        self.absent = {}  # known name -> when it was first missing from the folder
+        self.unavailable_since = None  # when the folder went missing or unreadable
+        self.batches = 0
+
+    def id(self, p):
+        return (str(p), self.seen[p]["print"])
+
+    def look(self):
+        """(the folder's files, its new files {path: print}, None), or (None, None, a
+        PROBLEMS key) when it is missing or cannot be listed. A folder with no record,
+        because known.json was deleted or damaged, is recorded first: its files are
+        left as they are, never renamed all at once."""
+        if not self.path.is_dir():
+            return None, None, "folder"
+        try:
+            if not known.has_record(self.path):
+                count = known.record_folder(self.path)
+                log("No record of %s: its %s left as they are" % (self.path, _plural(count, "file")))
+            return known.visible(self.path), dict(known.new_files(self.path)), None
+        except OSError as e:
+            log("Can't open %s: %s" % (self.path, e))
+            return None, None, "listing"
+
+    def remember(self, entries):
+        """Know these (path, print) pairs from now on, in known.json and, should that
+        fail, at least for this run."""
+        entries = list(entries)
+        self.handled.update((str(p), f) for p, f in entries)
+        try:
+            known.add(self.path, [(Path(p).name, f) for p, f in entries])
+        except OSError as e:
+            log("Could not record %s: %s" % (", ".join(Path(p).name for p, _ in entries), e))
+
+    def track(self, now, current):
+        gone = {e["print"]: p for p, e in self.seen.items() if p not in current}
+        for p, f in current.items():
+            if (str(p), f) in self.handled:
+                continue
+            e = self.seen.get(p)
+            if e and e["print"] == f:
+                continue
+            if not e and f in gone:  # the same file under another name: someone renamed it by hand
+                old = gone.pop(f)
+                self.remember([(p, f)])
+                log("Renamed by hand: %s -> %s, left as it is" % (old.name, p.name))
+                continue
+            self.seen[p] = {"print": f, "since": now}
+            self.activity = now
+        for p in [p for p in self.seen if p not in current]:
+            del self.seen[p]
+
+    def forget_absent(self, now, listing):
+        """Forget the names of known files gone from the folder for FORGET seconds, so a
+        new file with the same name (Canva's "1.png" next week) counts as new. A file
+        back within that time (Drive replacing it) keeps its name known."""
+        present = {p.name.lower() for p in listing}
+        names = known.names(self.path)
+        for n in [n for n in self.absent if n in present or n not in names]:
+            del self.absent[n]
+        for n in names - present:
+            self.absent.setdefault(n, now)
+        stale = {n for n, t in self.absent.items() if now - t >= FORGET}
+        if stale:
+            try:
+                known.forget_names(self.path, stale)
+            except OSError as e:
+                log("Could not forget names: %s" % e)
+                return
+            log("Forgot names no longer in %s: %s" % (self.name, ", ".join(sorted(stale))))
+            for n in stale:
+                del self.absent[n]
+
+    def later(self, fid, now):
+        fail = self.failures.get(fid)
+        return bool(fail and fail["next"] > now)
+
+    def ready(self, now):
+        out = [p for p, e in self.seen.items()
+               if self.id(p) not in self.given_up and now - e["since"] >= SETTLE
+               and not self.later(self.id(p), now) and _opens(p)]
+        return sorted(out, key=scanner.natural_key)
+
+    def settling(self, ready, now):
+        """New files not ready yet: still downloading (not those waiting to be tried again)."""
+        return [p for p in self.seen if p not in ready and self.id(p) not in self.given_up
+                and not self.later(self.id(p), now)]
+
+    def failed(self, fid, paid, now):
+        """Count a failure. Returns True when the file is now left alone until the next start-up."""
+        e = self.failures.setdefault(fid, {"count": 0, "paid": 0, "next": 0.0})
+        e["count"] += 1
+        e["paid"] += bool(paid)
+        if e["paid"] >= PAID_TRIES or e["count"] > len(RETRY):
+            self.given_up.add(fid)
+            self.descs.pop(fid, None)
+            return True
+        e["next"] = now + RETRY[e["count"] - 1]
+        return False
+
+
 class Watcher:
-    """tick() looks at the folder once and does whatever is due. The clock, the two
-    naming steps, the free check and notifications can be passed in, so tests run it
-    without waiting or OpenRouter."""
+    """tick() looks at every watched folder once and does whatever is due. Each folder
+    keeps its own FolderWatch; the start-up wait, the free key check, the monthly limit
+    and the Google Drive check are shared. The clock, the two naming steps, the free
+    check, the Drive check and notifications can be passed in, so tests run it without
+    waiting or OpenRouter."""
 
     def __init__(self, clock=time.time, say=None, read=None, name=None, check=None, startup=True, drive=None):
         self.clock = clock
@@ -200,94 +328,111 @@ class Watcher:
         self.name = name or _name
         self.check = check or free_check
         self.started = clock()
-        self.folder = None
-        self.problems = set()
+        self.folders = {}  # known.key(path) -> FolderWatch, in the settings' order
+        self.problems = set()  # PROBLEMS keys; one about a single folder is "kind|path"
         self.next_check = 0.0
         self.announced = self.checked = False
-        self.batches = 0
         self.last_batch = None
-        self.unavailable_since = None  # when the folder went missing or unreadable
-        self._forget()
 
-    def _forget(self):
-        """Start afresh on the current folder's new files. A file is known by its id,
-        (path, print): by print alone, duplicates in one batch would share everything."""
-        self.seen = {}  # path -> {"print", "since"}: each new file and when it last changed
-        self.activity = self.clock()  # when a new file last appeared or changed
-        self.descs = {}  # id -> description already paid for
-        self.failures = {}  # id -> {"count", "paid", "next"}
-        self.given_up = set()  # ids left alone until the next start-up
-        self.handled = set()  # ids renamed or left alone this run, even if known.json could not record them
-        self.absent = {}  # known name -> when it was first missing from the folder
+    @property
+    def failures(self):
+        """Every folder's failures, together."""
+        out = {}
+        for fw in self.folders.values():
+            out.update(fw.failures)
+        return out
 
-    def _id(self, p):
-        return (str(p), self.seen[p]["print"])
+    def _where(self, fw):
+        """" in Youth Media" when several folders are watched: one folder's texts stay as they were."""
+        return " in %s" % fw.name if len(self.folders) > 1 else ""
+
+    def _sync(self, now, paths):
+        """Follow the settings: a new folder gets its FolderWatch, a removed one is dropped."""
+        folders = {}
+        for path in paths:
+            k = known.key(path)
+            folders[k] = self.folders.get(k) or FolderWatch(path, now)
+        for k, fw in self.folders.items():
+            if k not in folders:
+                self._clear("folder", fw)
+                self._clear("listing", fw)
+                log("No longer watching %s" % fw.path)
+        self.folders = folders
 
     def tick(self):
         """Look once. Returns False when watching is off, so the watcher should stop."""
         s = config.watch_settings()
-        if not s["enabled"] or not s["folder"]:
+        if not s["enabled"] or not s["folders"]:
             return self._status("stopped", "Background renaming is off")
         now = self.clock()
-        folder = Path(s["folder"])
-        if folder != self.folder:
-            if self.folder is not None:
-                self._forget()
-            self.folder = folder
+        self._sync(now, s["folders"])
         wait = s["startup_wait_min"] * 60 if self.startup else 0
         if not self.announced:
             self.announced = True
             when = "in %s" % _plural(s["startup_wait_min"], "minute") if wait else "as they arrive"
-            self.say("Smart Explorer is watching %s. New files will be renamed %s." % (folder.name, when))
-        listing, current, trouble = self._look(folder)
-        if trouble:
-            if self.unavailable_since is None:
-                self.unavailable_since = now
-            if now - self.started < wait + FOLDER_GRACE or now - self.unavailable_since < FOLDER_GRACE:
-                return self._status("waiting", "Waiting for %s to appear" % folder.name)
-            self._problem(trouble, s)
-            return self._status("paused", "Paused: " + self._paused(trouble, s))
-        self.unavailable_since = None
-        self._clear("folder")
-        self._clear("listing")
-        self._track(now, current)
-        self._forget_absent(now, listing)
+            self.say("Smart Explorer is watching %s. New files will be renamed %s." % (_names(self.folders.values()), when))
+        looked, troubled = [], []  # folders looked at; (folder, PROBLEMS key) for those that couldn't be
+        for fw in self.folders.values():
+            listing, current, trouble = fw.look()
+            if trouble:
+                if fw.unavailable_since is None:
+                    fw.unavailable_since = now
+                if now - self.started >= wait + FOLDER_GRACE and now - fw.unavailable_since >= FOLDER_GRACE:
+                    self._problem(trouble, s, fw)
+                troubled.append((fw, trouble))
+                continue
+            fw.unavailable_since = None
+            self._clear("folder", fw)
+            self._clear("listing", fw)
+            fw.track(now, current)
+            fw.forget_absent(now, listing)
+            looked.append(fw)
+        if not looked:  # no folder to look at: say why, as for one folder
+            fw, trouble = troubled[0]
+            if self._key(trouble, fw) in self.problems:
+                return self._status("paused", "Paused: " + self._paused(trouble, s, fw))
+            return self._status("waiting", "Waiting for %s to appear" % fw.name)
         self._check_drive(s, now, wait)
         left = self.started + wait - now
         if left > 0:
             return self._status("waiting", "Waiting for Google Drive, %d min left" % math.ceil(left / 60))
         if not self.checked:
             self.checked = True
-            if not self.seen and self.drive_up is not False:  # with Drive off, "no new files" would mislead
-                self.say("Checked %s: no new files." % folder.name)
-        ready = self._ready(now)
-        settling = [p for p in self.seen if p not in ready and self._id(p) not in self.given_up
-                    and not self._later(self._id(p), now)]
-        if not ready:
-            if settling:
-                return self._status("downloading", "Waiting for %s to finish downloading" % _plural(len(settling), "file"))
-            return self._status("watching", self._watching())
-        quiet = GAP if self.batches else FIRST_GAP
-        if now - self.activity < quiet:
-            if settling:
-                return self._status("downloading", "Waiting for %s to finish downloading" % _plural(len(settling), "file"))
-            return self._status("downloading", "Found %s. Renaming in %d s, in case more are on the way." % (
-                _plural(len(ready), "new file"), math.ceil(quiet - (now - self.activity))))
-        problem = self._blocked(s, now)
-        if problem:
-            return self._status("paused", "Paused: " + self._paused(problem, s))
-        self._batch(s, ready[:MAX_BATCH], now)
-        return self._status("watching", self._watching())
+            if not any(fw.seen for fw in looked) and self.drive_up is not False:  # Drive off: "no new files" would mislead
+                self.say("Checked %s: no new files." % _names(looked))
+        busy = None  # what the first folder still waiting on downloads or its quiet minute shows
+        for fw in looked:
+            ready = fw.ready(now)
+            settling = fw.settling(ready, now)
+            where = self._where(fw)
+            downloading = ("downloading", "Waiting for %s to finish downloading%s" % (_plural(len(settling), "file"), where))
+            if not ready:
+                busy = busy or (downloading if settling else None)
+                continue
+            quiet = GAP if fw.batches else FIRST_GAP
+            if now - fw.activity < quiet:
+                busy = busy or (downloading if settling else (
+                    "downloading", "Found %s%s. Renaming in %d s, in case more are on the way." % (
+                        _plural(len(ready), "new file"), where, math.ceil(quiet - (now - fw.activity)))))
+                continue
+            problem = self._blocked(s, now)
+            if problem:
+                return self._status("paused", "Paused: " + self._paused(problem, s))
+            self._batch(s, fw, ready[:MAX_BATCH], now)
+        if busy:
+            return self._status(*busy)
+        return self._status("watching", self._watching(troubled))
 
     def mark_stopped(self):
         self._status("stopped", "Background renaming stopped")
 
     def _check_drive(self, s, now, wait):
-        """When the folder is in Google Drive, look every DRIVE_EVERY seconds whether
-        Drive is running, and say once if it isn't: after the start-up wait plus
-        FOLDER_GRACE, and once it has been off for FOLDER_GRACE. Renaming carries on:
-        files already here can be renamed, and Drive syncs the names when it is back."""
-        if not gdrive.is_drive_folder(self.folder):
+        """When folders are in Google Drive, look every DRIVE_EVERY seconds whether Drive
+        is running, and say once if it isn't: after the start-up wait plus FOLDER_GRACE,
+        and once it has been off for FOLDER_GRACE. Renaming carries on: files already here
+        can be renamed, and Drive syncs the names when it is back."""
+        in_drive = [fw for fw in self.folders.values() if gdrive.is_drive_folder(fw.path)]
+        if not in_drive:
             self.drive_up, self.drive_down_since = None, None
             self._clear("drive")
             return
@@ -302,114 +447,53 @@ class Watcher:
             self.drive_down_since = now
             log("Google Drive isn't running")
         if now - self.started >= wait + FOLDER_GRACE and now - self.drive_down_since >= FOLDER_GRACE:
-            self._problem("drive", s)
+            self._problem("drive", s, folder=_names(in_drive))
 
     def _status(self, state, message):
-        if state == "watching" and "drive" in self.problems:
-            state = "warning"  # watching, but nothing new can arrive
-        data = {"state": state, "message": message, "folder": str(self.folder or ""), "heartbeat": time.time(),
-                "last_batch": self.last_batch, "problems": sorted(self.problems)}
+        if state == "watching" and any(p == "drive" or "|" in p for p in self.problems):
+            state = "warning"  # watching, but a folder is missing or nothing new can arrive
+        paths = [str(fw.path) for fw in self.folders.values()]
+        data = {"state": state, "message": message, "folder": paths[0] if paths else "", "folders": paths,
+                "heartbeat": time.time(), "last_batch": self.last_batch, "problems": sorted(self.problems)}
         try:
             config.write_json(watch_dir() / "status.json", data)
         except OSError:
             pass
         return state != "stopped"
 
-    def _watching(self):
-        text = "Watching %s" % self.folder.name
+    def _watching(self, troubled):
+        fws = list(self.folders.values())
+        text = "Watching %s" % (fws[0].name if len(fws) == 1 else "%d folders" % len(fws))
+        missing = [self._paused(kind, None, fw) for fw, kind in troubled if self._key(kind, fw) in self.problems]
+        if missing:
+            return text + " · " + "; ".join(missing)
         if "drive" in self.problems:
             return text + " · Google Drive isn't running"
         if self.last_batch:
             text += " · last batch %s, %s" % (_clock_text(self.last_batch["at"]), _plural(self.last_batch["count"], "file"))
+            if len(fws) > 1:
+                text += " in %s" % self.last_batch["folder"]
         return text
 
-    def _look(self, folder):
-        """(the folder's files, its new files {path: print}, None), or (None, None, a
-        PROBLEMS key) when it is missing or cannot be listed. A folder with no record,
-        because known.json was deleted or damaged, is recorded first: its files are
-        left as they are, never renamed all at once."""
-        if not folder.is_dir():
-            return None, None, "folder"
-        try:
-            if not known.has_record(folder):
-                count = known.record_folder(folder)
-                log("No record of %s: its %s left as they are" % (folder, _plural(count, "file")))
-            return known.visible(folder), dict(known.new_files(folder)), None
-        except OSError as e:
-            log("Can't open %s: %s" % (folder, e))
-            return None, None, "listing"
+    @staticmethod
+    def _key(kind, fw=None):
+        return kind if fw is None else "%s|%s" % (kind, fw.path)
 
-    def _remember(self, entries):
-        """Know these (path, print) pairs from now on, in known.json and, should that
-        fail, at least for this run."""
-        entries = list(entries)
-        self.handled.update((str(p), f) for p, f in entries)
-        try:
-            known.add(self.folder, [(Path(p).name, f) for p, f in entries])
-        except OSError as e:
-            log("Could not record %s: %s" % (", ".join(Path(p).name for p, _ in entries), e))
+    def _problem(self, kind, s, fw=None, folder=None):
+        k = self._key(kind, fw)
+        if k not in self.problems:
+            self.problems.add(k)
+            self.say(PROBLEMS[kind].format(folder=folder or (fw.name if fw else ""),
+                                           limit=_dollars(s["monthly_limit_usd"])))
 
-    def _track(self, now, current):
-        gone = {e["print"]: p for p, e in self.seen.items() if p not in current}
-        for p, f in current.items():
-            if (str(p), f) in self.handled:
-                continue
-            e = self.seen.get(p)
-            if e and e["print"] == f:
-                continue
-            if not e and f in gone:  # the same file under another name: someone renamed it by hand
-                old = gone.pop(f)
-                self._remember([(p, f)])
-                log("Renamed by hand: %s -> %s, left as it is" % (old.name, p.name))
-                continue
-            self.seen[p] = {"print": f, "since": now}
-            self.activity = now
-        for p in [p for p in self.seen if p not in current]:
-            del self.seen[p]
+    def _clear(self, kind, fw=None):
+        k = self._key(kind, fw)
+        if k in self.problems:
+            self.problems.discard(k)
+            log("Cleared: " + k)
 
-    def _forget_absent(self, now, listing):
-        """Forget the names of known files gone from the folder for FORGET seconds, so a
-        new file with the same name (Canva's "1.png" next week) counts as new. A file
-        back within that time (Drive replacing it) keeps its name known."""
-        present = {p.name.lower() for p in listing}
-        names = known.names(self.folder)
-        for n in [n for n in self.absent if n in present or n not in names]:
-            del self.absent[n]
-        for n in names - present:
-            self.absent.setdefault(n, now)
-        stale = {n for n, t in self.absent.items() if now - t >= FORGET}
-        if stale:
-            try:
-                known.forget_names(self.folder, stale)
-            except OSError as e:
-                log("Could not forget names: %s" % e)
-                return
-            log("Forgot names no longer in the folder: " + ", ".join(sorted(stale)))
-            for n in stale:
-                del self.absent[n]
-
-    def _later(self, fid, now):
-        fail = self.failures.get(fid)
-        return bool(fail and fail["next"] > now)
-
-    def _ready(self, now):
-        out = [p for p, e in self.seen.items()
-               if self._id(p) not in self.given_up and now - e["since"] >= SETTLE
-               and not self._later(self._id(p), now) and _opens(p)]
-        return sorted(out, key=scanner.natural_key)
-
-    def _problem(self, kind, s):
-        if kind not in self.problems:
-            self.problems.add(kind)
-            self.say(PROBLEMS[kind].format(folder=self.folder.name, limit=_dollars(s["monthly_limit_usd"])))
-
-    def _clear(self, kind):
-        if kind in self.problems:
-            self.problems.discard(kind)
-            log("Cleared: " + kind)
-
-    def _paused(self, kind, s):
-        return PAUSED[kind].format(folder=self.folder.name, limit=_dollars(s["monthly_limit_usd"]))
+    def _paused(self, kind, s, fw=None):
+        return PAUSED[kind].format(folder=fw.name if fw else "", limit=_dollars(s["monthly_limit_usd"]) if s else "")
 
     def _blocked(self, s, now):
         """Why no batch may be sent now (a PROBLEMS key), or None. Asks OpenRouter's free
@@ -434,17 +518,20 @@ class Watcher:
             self.next_check = now + CHECK_AGAIN[found]
         return found
 
-    def _batch(self, s, paths, now):
+    def _batch(self, s, fw, paths, now):
+        """Name and rename one folder's ready files. A batch never mixes folders: names fit
+        that folder's existing files, and Keep order numbers that folder's set."""
         key, model = config.load().get("key"), config.model()
         profile = conventions.resolve(s["profile"])
-        ids = [self._id(p) for p in paths]
+        ids = [fw.id(p) for p in paths]
         items = [{"id": i, "path": str(p), "name": p.name, "kind": scanner.kind(p)} for i, p in enumerate(paths)]
-        self.say("Renaming %s…" % _plural(len(items), "new file"))
-        self._status("renaming", "Renaming %s…" % _plural(len(items), "file"))
-        log("Batch: " + ", ".join(p.name for p in paths))
+        where = self._where(fw)
+        self.say("Renaming %s%s…" % (_plural(len(items), "new file"), where))
+        self._status("renaming", "Renaming %s%s…" % (_plural(len(items), "file"), where))
+        log("Batch in %s: %s" % (fw.name, ", ".join(p.name for p in paths)))
         failed, done = {}, {}  # failed: id -> whether a paid request failed for it; done: id -> final name
         try:
-            refused = self._name_and_rename(key, model, profile, items, ids, failed, done)
+            refused = self._name_and_rename(fw, key, model, profile, items, ids, failed, done)
         except Exception as e:  # a full disk, say: counted, so it cannot repeat (and pay) every look
             log("Batch failed: %r" % (e,))
             refused = None
@@ -454,42 +541,42 @@ class Watcher:
             self._problem(kind, s)
             self.next_check = now + CHECK_AGAIN[kind]
         names = {f: it["name"] for it, f in zip(items, ids)}
-        gave_up = [names[f] for f, paid in failed.items() if self._failed(f, paid, now)]
-        later = [names[f] for f in failed if f not in self.given_up]
-        self.batches += 1
+        gave_up = [names[f] for f, paid in failed.items() if fw.failed(f, paid, now)]
+        later = [names[f] for f in failed if f not in fw.given_up]
+        fw.batches += 1
         if done:
-            self.last_batch = {"at": now, "count": len(done)}
+            self.last_batch = {"at": now, "count": len(done), "folder": fw.name}
         if done or later:
-            self.say(_done_text(list(done.values()), later))
+            self.say(_done_text(list(done.values()), later, where))
         if gave_up:
             log("Left alone until the next start-up: " + ", ".join(gave_up))
             if len(gave_up) == 1:
-                self.say("Couldn't name %s. It's still in %s under its old name." % (gave_up[0], self.folder.name))
+                self.say("Couldn't name %s. It's still in %s under its old name." % (gave_up[0], fw.name))
             else:
-                self.say("Couldn't name %s. They're still in %s under their old names." % (_list(gave_up), self.folder.name))
+                self.say("Couldn't name %s. They're still in %s under their old names." % (_list(gave_up), fw.name))
 
-    def _name_and_rename(self, key, model, profile, items, ids, failed, done):
+    def _name_and_rename(self, fw, key, model, profile, items, ids, failed, done):
         """Read what is not yet described, name the batch and rename it, filling failed
         and done. Returns OpenRouter's refusal status (402, say) or None. Descriptions are
         kept before anything else can go wrong, so paid work is never thrown away."""
         refused = None
-        todo = [(it, f) for it, f in zip(items, ids) if f not in self.descs]
+        todo = [(it, f) for it, f in zip(items, ids) if f not in fw.descs]
         if todo:
             descs, cost = self.read(key, model, [it for it, _ in todo], profile)
             for (it, f), d in zip(todo, descs):
                 if "error" not in d:
-                    self.descs[f] = d
+                    fw.descs[f] = d
                 elif d.get("status") in namer.NO_RETRY:
                     refused = d["status"]  # OpenRouter charges nothing for a request it refuses
                 else:
                     failed[f] = not d.get("local")
                     log("Could not read %s: %s" % (it["name"], d["error"]))
             _spend(cost)
-        described = [(it, f) for it, f in zip(items, ids) if f in self.descs]
+        described = [(it, f) for it, f in zip(items, ids) if f in fw.descs]
         if not described or refused:
             return refused
         its = [it for it, _ in described]
-        out = self.name(key, model, its, [self.descs[f] for _, f in described], profile, scanner.siblings(its))
+        out = self.name(key, model, its, [fw.descs[f] for _, f in described], profile, scanner.siblings(its))
         _spend(out["cost"])
         if out["name_error"]:
             log(out["name_error"])
@@ -497,10 +584,10 @@ class Watcher:
                 return out["name_status"]  # refused, not charged: the descriptions wait for the next try
             failed.update((f, True) for _, f in described)  # never rename with the fallback words
             return None
-        done.update(self._rename(items, described, out["results"], failed))
+        done.update(self._rename(fw, items, described, out["results"], failed))
         return None
 
-    def _rename(self, items, described, results, failed):
+    def _rename(self, fw, items, described, results, failed):
         """Rename the named files. Returns {id: final name} for each file now ready."""
         nums = scanner.order_numbers(items) if scanner.looks_numbered(items) else None
         planned, wanted = {}, []
@@ -510,7 +597,7 @@ class Watcher:
             except OSError:
                 continue  # gone since it was read
             if changed:
-                self.descs.pop(f, None)  # changed since it was read: it is read again as a new file
+                fw.descs.pop(f, None)  # changed since it was read: it is read again as a new file
                 continue
             name = "%s %s" % (nums[it["id"]], r["proposed"]) if nums else r["proposed"]
             wanted.append({"path": it["path"], "new_name": name})
@@ -531,23 +618,11 @@ class Watcher:
             final = Path(moved.get(path, path))
             if final.is_file():
                 done[f] = final.stem
-        self._remember((moved.get(p, p), f[1]) for p, f in planned.items() if f in done)
+        fw.remember((moved.get(p, p), f[1]) for p, f in planned.items() if f in done)
         for f in done:
-            self.descs.pop(f, None)
-            self.failures.pop(f, None)
+            fw.descs.pop(f, None)
+            fw.failures.pop(f, None)
         return done
-
-    def _failed(self, fid, paid, now):
-        """Count a failure. Returns True when the file is now left alone until the next start-up."""
-        e = self.failures.setdefault(fid, {"count": 0, "paid": 0, "next": 0.0})
-        e["count"] += 1
-        e["paid"] += bool(paid)
-        if e["paid"] >= PAID_TRIES or e["count"] > len(RETRY):
-            self.given_up.add(fid)
-            self.descs.pop(fid, None)
-            return True
-        e["next"] = now + RETRY[e["count"] - 1]
-        return False
 
 
 def _lock(f):

@@ -139,7 +139,7 @@ def test_test_mode_names_without_a_key(folder, monkeypatch):
 
 
 def test_missing_folder_is_said_after_the_wait_and_grace(folder):
-    config.save(watch=dict(config.watch_settings(), startup_wait_min=3, folder=str(folder.parent / "Gone")))
+    config.save(watch=dict(config.watch_settings(), startup_wait_min=3, folders=[str(folder.parent / "Gone")]))
     fake = Fake()
     w, clock = start(fake)
     run(w, clock, 295)
