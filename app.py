@@ -256,7 +256,8 @@ def watch_state():
     running = watch.running()
     return {"settings": config.watch_settings(), "running": running, "status": watch.read_status(),
             "starting": not running and time.time() - SPAWNED["at"] < STARTING,
-            "spent_month": round(watch.spent_month(), 6), "can_autostart": autostart.available()}
+            "spent_month": round(watch.spent_month(), 6), "can_autostart": autostart.available(),
+            "autostart_on": autostart.enabled()}  # the start-up entry really exists, not just the setting
 
 
 def _is_folder(f):
@@ -311,6 +312,8 @@ def api_watch_save():
     err = None
     if new["enabled"] and new["autostart"] and autostart.available():
         err = autostart.enable()  # also refreshes the shortcut after the app moved
+        if not err and not autostart.enabled():  # read it back: never say it's there when it isn't
+            err = "Smart Explorer couldn't add itself to this computer's start-up items."
     else:
         autostart.disable()
     if new["enabled"] and not watch.running():
@@ -328,6 +331,12 @@ def api_watch_start():
     if config.watch_settings()["enabled"] and not watch.running():
         spawn_watcher()
     return jsonify(watch_state())
+
+
+@app.post("/api/watch/startup-items")
+def api_watch_startup_items():
+    autostart.show()
+    return jsonify(ok=True)
 
 
 @app.post("/api/watch/log")

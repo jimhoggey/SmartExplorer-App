@@ -1,8 +1,9 @@
 name: build
 # Push a tag vX.Y.Z (matching version.py) to build the Mac .dmg files and the
 # Windows installer and publish them as a GitHub release. Pull requests that
-# touch packaging, and "Run workflow" on the Actions tab, build and check the
-# same files without publishing (download them from the run's artifacts).
+# touch the app (code, page, icons, packaging), and "Run workflow" on the Actions
+# tab, build and check the same files without publishing (download them from the
+# run's artifacts). The church runs it on Windows, so every change is checked there.
 on:
   push:
     tags: ["v*"]
@@ -12,13 +13,9 @@ on:
       - "smart_explorer.spec"
       - "packaging/**"
       - "requirements.txt"
-      - "version.py"
-      - "desktop.py"
-      - "watch.py"
-      - "known.py"
-      - "notify.py"
-      - "autostart.py"
-      - "scripts/smoke_watch.py"
+      - "**.py"
+      - "static/**"
+      - "assets/**"
   workflow_dispatch:
 permissions:
   contents: write
@@ -141,6 +138,9 @@ jobs:
       - name: Smoke test background renaming (--watch renames new files)
         shell: bash
         run: python scripts/smoke_watch.py "dist/Smart Explorer/Smart Explorer.exe"
+      - name: Check "Start by itself when the computer starts" really starts it (Startup shortcut, as at sign-in)
+        shell: bash
+        run: python scripts/smoke_windows_startup.py "dist/Smart Explorer/Smart Explorer.exe"
       - name: Build the installer
         shell: pwsh
         run: |

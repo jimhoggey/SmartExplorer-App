@@ -4,7 +4,8 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
   "checkUpdates", "updateMsg", "watchbar", "watchText", "watchStart", "wOn", "wFields", "wFolder", "wPick", "wProfile",
-  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wWaitRow", "wStatus", "wLog"].reduce((o, k) => (o[k] = $(k), o), {});
+  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wShowStartup", "wWaitRow", "wStatus", "wLog"]
+  .reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
 // loadGen: bumped by every load and by Clear, so a scan that finishes after a newer
@@ -428,7 +429,9 @@ async function saveSettings() {
   status = await api("settings", body);
   fillSettings();
   els.settings.close();
-  toast("Settings saved");
+  const w = watchState || {}, s = w.settings || {};
+  toast(s.enabled && s.autostart && w.autostart_on  // read back from the computer, not assumed
+    ? "Settings saved. Smart Explorer is in this computer's start-up items." : "Settings saved");
 }
 
 async function testKey() {
@@ -589,10 +592,12 @@ function showWatch(w) {
   watchState = w;
   const on = w.settings.enabled, down = !w.running && !w.starting;
   els.watchbar.hidden = !on;
-  els.watchbar.classList.toggle("problem", on && (down || (w.running && (w.status || {}).state === "paused")));
+  const trouble = w.running && ["paused", "warning"].includes((w.status || {}).state);  // warning: Google Drive is off
+  els.watchbar.classList.toggle("problem", on && (down || trouble));
   els.watchText.textContent = on ? watchLine(w) : "";
   els.watchStart.hidden = !on || !down;
   els.wStatus.textContent = on ? watchLine(w) : "";
+  if (watchFilled) showAutostart();  // what the start-up note says follows what is really there
   clearTimeout(watchTimer);
   if (on) watchTimer = setTimeout(refreshWatch, 5000);
 }
@@ -623,13 +628,22 @@ function fillWatch() {
 }
 
 // Start by itself: what it means, and the wait that only applies when the computer starts.
+// The note never claims more than is true: the tick is only a wish until Save, and
+// "is in the start-up items" comes from the server reading the entry back.
 function showAutostart() {
-  const can = !!(watchState && watchState.can_autostart), on = can && els.wAuto.checked;
-  els.wAutoNote.textContent = !can
-    ? "It keeps running after you close this window, until the computer restarts. Then open Smart Explorer to start it again."
-    : on ? "Smart Explorer adds itself to the computer's start-up items. You don't need to do anything else."
+  const w = watchState || {}, can = !!w.can_autostart, ticked = can && els.wAuto.checked;
+  const saved = !!(w.settings && w.settings.enabled && w.settings.autostart), there = !!w.autostart_on;
+  let note = "", ok = false;
+  if (!can) note = "It keeps running after you close this window, until the computer restarts. Then open Smart Explorer to start it again.";
+  else if (!ticked) note = there ? "Click Save to take Smart Explorer out of the computer's start-up items."
     : "Without this, it runs until the computer restarts. Then open Smart Explorer to start it again.";
-  els.wWaitRow.hidden = !on;
+  else if (saved && there) { note = "✓ Smart Explorer is in this computer's start-up items, so it starts by itself when you sign in."; ok = true; }
+  else if (saved) note = "Smart Explorer isn't in the start-up items yet. Click Save to try again.";
+  else note = "Click Save, and Smart Explorer adds itself to this computer's start-up items.";
+  els.wAutoNote.textContent = note;
+  els.wAutoNote.parentElement.classList.toggle("ok", ok);
+  els.wShowStartup.hidden = !there;
+  els.wWaitRow.hidden = !ticked;
 }
 
 function watchDraft() {
@@ -645,8 +659,16 @@ async function saveWatch() {
   if (!watchState || !watchFilled) return true;
   const d = watchDraft(), s = watchState.settings;
   if (!Object.keys(d).some((k) => d[k] !== s[k])) return true;
+  els.wFolder.classList.remove("bad");
+  const badFolder = (msg) => {  // nothing is saved: say so next to the box that needs fixing
+    els.wFolder.classList.add("bad");
+    els.wFolder.focus();
+    return new Error(msg + " Nothing was saved yet.");
+  };
+  if (d.enabled && !d.folder) throw badFolder("Choose the folder to watch first.");
   if (d.enabled && (!s.enabled || d.folder !== s.folder)) {
-    const { count } = await api("watch/preview", { folder: d.folder });
+    let count;
+    try { ({ count } = await api("watch/preview", { folder: d.folder })); } catch (e) { throw badFolder(e.message); }
     const left = count === 0 ? "" : count === 1 ? "\n\nThe file already in it will be left as it is."
       : `\n\nThe ${count} files already in it will be left as they are.`;
     const msg = "Smart Explorer will rename new files in this folder by itself, even with this window closed." + left;
@@ -737,6 +759,8 @@ els.cancel.onclick = () => els.settings.close();
 els.save.onclick = inDialog(els.keymsg, saveSettings);  // a folder that can't be found is said in the dialog
 els.wOn.onchange = () => (els.wFields.hidden = !els.wOn.checked);
 els.wAuto.onchange = showAutostart;
+els.wShowStartup.onclick = inDialog(els.keymsg, () => api("watch/startup-items", {}));
+els.wFolder.oninput = () => els.wFolder.classList.remove("bad");
 els.wPick.onclick = inDialog(els.keymsg, async () => {
   const { folder } = await api("pick-folder");
   if (folder) els.wFolder.value = folder;

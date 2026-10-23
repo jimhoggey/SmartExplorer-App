@@ -244,7 +244,26 @@ def watcher(monkeypatch):
 def test_watch_starts_off(client, watcher):
     w = client.get("/api/watch").get_json()
     assert w["settings"] == config.WATCH_DEFAULTS and w["running"] is False and w["spent_month"] == 0
-    assert w["can_autostart"] is True and w["status"] == {}
+    assert w["can_autostart"] is True and w["status"] == {} and w["autostart_on"] is False
+
+
+def test_a_start_up_item_is_checked_after_adding_it(client, watcher, folder, monkeypatch):
+    import autostart
+    there = {"on": False}
+    monkeypatch.setattr(autostart, "enable", lambda: None)  # said it worked…
+    monkeypatch.setattr(autostart, "enabled", lambda: there["on"])  # …but nothing is there
+    w = client.post("/api/watch", json={"enabled": True, "folder": str(folder), "autostart": True}).get_json()
+    assert "start-up items" in w["error"] and w["autostart_on"] is False
+    there["on"] = True
+    w = client.post("/api/watch", json={"monthly_limit_usd": 6}).get_json()
+    assert "error" not in w and w["autostart_on"] is True
+
+
+def test_start_up_items_can_be_shown(client, watcher, monkeypatch):
+    import autostart
+    shown = []
+    monkeypatch.setattr(autostart, "show", lambda: shown.append(1))
+    assert client.post("/api/watch/startup-items", json={}).status_code == 200 and shown == [1]
 
 
 def test_watch_preview_counts_what_would_be_left_alone(client, watcher, folder):

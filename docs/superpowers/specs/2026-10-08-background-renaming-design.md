@@ -188,6 +188,16 @@ Plain words, no version numbers. `<Folder>` is the folder's name.
 | Monthly limit reached | Background renaming has reached this month's US$5 limit. Raise it in Settings to carry on. |
 | File given up | Couldn't name 7.png. It's still in <Folder> under its old name. |
 | Folder not found | Smart Explorer can't find <Folder>. Check Google Drive is running and signed in. |
+| Google Drive not running | Google Drive isn't running on this computer, so new files can't arrive in <Folder>. Open Google Drive; Smart Explorer carries on by itself. |
+
+**Google Drive check.** When the folder's path is in Google Drive (`My Drive`,
+`Shared drives`, `Google Drive`, `GoogleDrive-…`), the watcher asks every 30 s
+whether Google Drive for desktop is running: `tasklist` for `GoogleDriveFS.exe`
+on Windows, `pgrep -x "Google Drive"` on a Mac. It cannot see Drive's sync
+progress (Drive offers no way to ask). Off for the start-up wait plus 2 minutes, and
+for 2 minutes in a row: it says so once, the bar turns red ("Watching <Folder> ·
+Google Drive isn't running", state `warning`), "Checked: no new files" is not said,
+and renaming carries on. It clears when Drive runs. Can't tell: nothing is said.
 
 **Windows:** a toast through Windows' own notification API, shown by PowerShell
 (built into Windows 10 and 11) started with `CREATE_NO_WINDOW`, so nothing flashes
@@ -221,8 +231,16 @@ watching is on, read from `GET /api/watch` every 5 s:
 - **Naming style:** ProPresenter by default.
 - **Monthly AI limit** in US$ (default 5), with this month's background spend below it.
 - **Start by itself when the computer starts** on/off (Windows and Mac), with a line
-  saying what it means: on, "Smart Explorer adds itself to the computer's start-up
-  items"; off, "it runs until the computer restarts".
+  that never claims more than is true. Ticked but not saved: "Click Save, and Smart
+  Explorer adds itself…". Saved: the server reads the entry back (`autostart_on`)
+  and only then the line turns green, "✓ Smart Explorer is in this computer's
+  start-up items", with **Show** (the Startup folder on Windows, Login Items on a
+  Mac). If adding it failed: an error, and "isn't in the start-up items yet". On a
+  Mac, Save also registers the login item with launchd at once (`launchctl
+  bootstrap`), so it is listed straight away, not only after a restart. Off: "it
+  runs until the computer restarts".
+- A Save that can't be done (no folder, a folder that can't be found or opened)
+  marks the folder box red and says "Nothing was saved yet."
 - **Wait after the computer starts** in minutes (default 3), shown only when the
   box above is ticked, saying that turning it on here starts straight away.
 - **Status line** (as the status bar) and **Open log**.
