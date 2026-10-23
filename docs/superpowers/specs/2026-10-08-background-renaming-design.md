@@ -1,5 +1,8 @@
 # Smart Explorer — Background renaming (watch a folder) design
 
+> Since 0.7.0 it watches several folders: see `2026-10-23-multiple-folders-design.md`.
+> Everything here still applies to each folder.
+
 ## Goal
 On the church's Windows PC, Smart Explorer runs with no window from the moment
 someone signs in, watches one folder that Google Drive keeps in sync, and renames

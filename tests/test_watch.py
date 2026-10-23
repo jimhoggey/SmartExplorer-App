@@ -281,7 +281,7 @@ def test_a_new_folder_starts_afresh(folder, tmp_path):
     other = tmp_path / "Other"
     other.mkdir()
     png(other / "old.png")  # no record of this folder: what is there is left alone
-    config.save(watch=dict(config.watch_settings(), folder=str(other)))
+    config.save(watch=dict(config.watch_settings(), folders=[str(other)]))
     run(w, clock, 10)
     png(other / "x.png")
     run(w, clock, 100)

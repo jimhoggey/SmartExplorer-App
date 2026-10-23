@@ -1,12 +1,12 @@
 """Windows only, run by CI on the built app: prove "Start by itself when the computer
 starts" really works, not just that a setting was saved.
 
-With the app running windowless, it turns watching on with start-up ticked through
-the same /api/watch the Settings window uses, then checks that:
+With the app running windowless, it turns watching on for two folders, with start-up
+ticked, through the same /api/watch the Settings window uses, then checks that:
 1. the app reads back that it is in the start-up items;
 2. the shortcut is in the Startup folder and points at the app with --watch;
 3. starting that shortcut the way Windows does at sign-in starts background
-   renaming, which renames new files;
+   renaming, which renames new files in both folders;
 4. turning watching off removes the shortcut;
 and that the Google Drive check can read the running programs.
 
@@ -64,10 +64,13 @@ def main(exe):
     app = subprocess.Popen([exe], env=dict(os.environ, SMART_EXPLORER_HEADLESS="1", SMART_EXPLORER_PORT=str(PORT)))
     try:
         until("the app answers", lambda: _answers(), 90)
-        folder = Path(tempfile.mkdtemp(prefix="se-startup-")) / "Sunday Media"
-        folder.mkdir()
+        base = Path(tempfile.mkdtemp(prefix="se-startup-"))
+        folders = [base / "Sunday Media", base / "Youth Media"]
+        for folder in folders:
+            folder.mkdir()
 
-        w = api("watch", {"enabled": True, "folder": str(folder), "startup_wait_min": 0, "autostart": True})
+        w = api("watch", {"enabled": True, "folders": [str(f) for f in folders], "startup_wait_min": 0,
+                          "autostart": True})
         if w.get("error") or not w.get("autostart_on"):
             raise SystemExit("FAILED: the app did not add itself to the start-up items: %s" % w)
         print("ok: the app reads back that it is in the start-up items", flush=True)
@@ -86,10 +89,11 @@ def main(exe):
 
         os.startfile(str(lnk))  # what Windows does with each Startup shortcut at sign-in
         until("the shortcut started background renaming", lambda: api("watch")["running"], 60)
-        for n, colour in (("1.png", "red"), ("2.png", "blue")):
-            Image.new("RGB", (64 + len(colour), 36), colour).save(folder / n)
-        until("new files renamed by the copy the shortcut started",
-              lambda: sorted(p.name for p in folder.iterdir()) == ["01 Slide 1.png", "02 Slide 2.png"], 180)
+        for i, folder in enumerate(folders):
+            for n, colour in (("1.png", "red"), ("2.png", "blue")):
+                Image.new("RGB", (64 + len(colour) + i, 36), colour).save(folder / n)
+        until("new files in both folders renamed by the copy the shortcut started",
+              lambda: all(sorted(p.name for p in f.iterdir()) == ["01 Slide 1.png", "02 Slide 2.png"] for f in folders), 240)
 
         w = api("watch", {"enabled": False})
         until("turning watching off removed the shortcut", lambda: not lnk.exists() and not api("watch")["autostart_on"], 30)

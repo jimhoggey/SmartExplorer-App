@@ -242,7 +242,7 @@ def test_google_drive_is_asked_every_30_seconds_and_only_for_drive_folders(drive
     assert d.asked == 10  # 300 s / 30 s, not once per 5-second look
     plain = tmp_path / "Media"
     plain.mkdir()
-    config.save(watch=dict(config.watch_settings(), folder=str(plain)))
+    config.save(watch=dict(config.watch_settings(), folders=[str(plain)]))
     d.asked = 0
     run(w, w.clock, 300)
     assert d.asked == 0

@@ -63,13 +63,13 @@ The full naming convention, with examples, is in [docs/naming-convention.md](doc
 
 Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)` on collisions. Existing files are never overwritten. Undo journals live in `~/.smart-explorer/journal/`.
 
-## Background renaming (watch a folder)
+## Background renaming (watch folders)
 
-Smart Explorer can rename new files in one folder by itself, with no window open: made for a Google Drive folder that ProPresenter's playlist watches. Set it up in *Settings → Watch a folder*: the folder, the naming style and a monthly AI limit for background naming (default US$5). Turned on there, it starts watching straight away and keeps running after you close the window.
+Smart Explorer can rename new files in one or more folders by itself, with no window open: made for Google Drive folders that ProPresenter's smart playlists watch. Set it up in *Settings → Watch folders*: add each folder (paste its path or **Choose**, then **Add**; **Remove** takes one off, up to 10), the naming style (one for all folders) and a monthly AI limit for background naming (default US$5, shared). Turned on there, it starts watching straight away and keeps running after you close the window. Each folder is handled on its own: files already in a folder when it is added are left alone, its new files are named together as one batch (never mixed with another folder's), and a folder that goes missing doesn't stop the others. With more than one folder, messages say which folder they are about ("3 files renamed and ready for ProPresenter in Youth Media"). Subfolders are not watched.
 
 Tick **Start by itself when the computer starts** and click **Save**: Smart Explorer adds itself to the computer's start-up items, reads the entry back, and only then shows "✓ Smart Explorer is in this computer's start-up items". You don't add it yourself. **Show** opens where it is listed: the Startup folder on Windows (`Smart Explorer (background)`), *System Settings → General → Login Items → Allow in the Background* on a Mac. Only with start-up ticked does **Wait after the computer starts** apply (default 3 minutes): time for Google Drive to download the week's files before anything is renamed.
 
-When the watched folder is in Google Drive (its path has `My Drive`, `Shared drives` or `Google Drive` in it), Smart Explorer also checks every 30 seconds that Google Drive for desktop is running (`GoogleDriveFS.exe` on Windows, "Google Drive" on a Mac). If it isn't, a notification says so once and the status bar turns red; renaming carries on, and the warning clears by itself when Drive starts. It can tell whether Drive runs, not how far its sync has got.
+When a watched folder is in Google Drive (its path has `My Drive`, `Shared drives` or `Google Drive` in it), Smart Explorer also checks every 30 seconds that Google Drive for desktop is running (`GoogleDriveFS.exe` on Windows, "Google Drive" on a Mac). If it isn't, a notification says so once and the status bar turns red; renaming carries on, and the warning clears by itself when Drive starts. It can tell whether Drive runs, not how far its sync has got.
 
 It works while the computer is awake: a sleeping computer renames nothing until it wakes, so set the ProPresenter computer not to sleep while it is in use.
 
