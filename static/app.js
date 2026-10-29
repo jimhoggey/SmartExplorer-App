@@ -3,7 +3,7 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
-  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchStart", "wOn", "wFields", "wList", "wFolder", "wPick", "wAdd", "wProfile",
+  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchRetry", "watchStart", "wOn", "wFields", "wList", "wFolder", "wPick", "wAdd", "wProfile",
   "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wShowStartup", "wWaitRow", "wStatus", "wLog"]
   .reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
@@ -33,6 +33,14 @@ async function api(path, body) {
 function toast(msg, opts = {}) {
   clearTimeout(toastTimer);
   els.toast.firstElementChild.textContent = msg;
+  els.toast.querySelectorAll("button").forEach((b) => b.remove());
+  if (opts.action) {  // e.g. Try again: the toast closes and the action runs
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = opts.action.label;
+    b.onclick = (e) => { e.stopPropagation(); els.toast.hidden = true; opts.action.run(); };
+    els.toast.appendChild(b);
+  }
   els.toast.classList.toggle("error", !!opts.error);
   els.toast.hidden = false;
   els.toast.title = opts.error ? "Click to dismiss" : "";
@@ -327,8 +335,23 @@ async function renameAll() {
     drafts = r.renamed ? kept : null;
     renamedCount = r.renamed;
     follow(r.moved);
-    if (r.error) toast(`Renamed ${plural(r.renamed, "file")}, then stopped: ${r.error}`, { error: true });
     await load(sources, true);
+    const failed = r.failed || [];
+    if (failed.length) {
+      // The names stay in their boxes, so Try again renames them as they are: no new AI request.
+      const stuck = new Set(failed.map((f) => f.path));
+      inputs().forEach((inp, n) => {
+        const k = stuck.has(items[n].path) && kept.get(items[n].path);
+        if (k) { inp.value = k.name; items[n].named = k.named; }
+      });
+      refreshCards();
+      const first = failed[0], name = first.path.replace(/^.*[\\/]/, "");
+      const who = failed.length === 1 ? name : `${name} and ${failed.length - 1} more`;
+      const fix = first.in_use ? (failed.length === 1 ? " Close it there, then" : " Close them there, then") : "";
+      toast(`${r.renamed ? `Renamed ${plural(r.renamed, "file")}. ` : ""}Couldn't rename ${who}: ${first.why}.${fix}`
+        + `${fix ? " click" : " Click"} Try again: the names are kept, nothing is asked of the AI again.`,
+        { error: true, action: { label: "Try again", run: renameAll } });
+    }
   } catch (e) { toast(e.message, { error: true }); }
 }
 
@@ -596,6 +619,7 @@ function showWatch(w) {
   els.watchbar.classList.toggle("problem", on && (down || trouble));
   els.watchText.textContent = on ? watchLine(w) : "";
   els.watchStart.hidden = !on || !down;
+  els.watchRetry.hidden = !on || !w.running || !((w.status || {}).stuck > 0);  // files named but in use
   els.wStatus.textContent = on ? watchLine(w) : "";
   if (watchFilled) showAutostart();  // what the start-up note says follows what is really there
   clearTimeout(watchTimer);
@@ -846,6 +870,10 @@ els.wPick.onclick = inDialog(els.keymsg, async () => {
 });
 els.wLog.onclick = inDialog(els.keymsg, () => api("watch/log", {}));
 els.watchStart.onclick = guarded(async () => showWatch(await api("watch/start", {})));
+els.watchRetry.onclick = guarded(async () => {
+  showWatch(await api("watch/retry", {}));
+  toast("Trying again with the names already chosen: no new AI request.");
+});
 els.test.onclick = guarded(testKey);
 els.model.onchange = () => {
   els.custom.hidden = !!els.model.value;

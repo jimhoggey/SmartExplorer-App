@@ -266,6 +266,32 @@ def test_start_up_items_can_be_shown(client, watcher, monkeypatch):
     assert client.post("/api/watch/startup-items", json={}).status_code == 200 and shown == [1]
 
 
+def test_rename_reports_a_file_in_use_and_renames_the_rest(client, folder, monkeypatch):
+    import os
+    import renamer
+    real = os.rename
+
+    def rename(old, new):
+        if old.endswith("a.jpg"):
+            e = PermissionError(13, "in use")
+            e.winerror = 32
+            raise e
+        real(old, new)
+
+    monkeypatch.setattr(renamer.os, "rename", rename)
+    r = client.post("/api/rename", json={"items": [{"path": str(folder / "a.jpg"), "new_name": "Giving"},
+                                                   {"path": str(folder / "b.png"), "new_name": "Welcome"}]}).get_json()
+    assert r["renamed"] == 1 and r["moved"] == [[str(folder / "b.png"), str(folder / "Welcome.png")]]
+    assert r["failed"][0]["path"] == str(folder / "a.jpg") and "open in another program" in r["failed"][0]["why"]
+
+
+def test_try_again_asks_background_renaming_to_rename_stuck_files_now(client, watcher, monkeypatch):
+    import watch
+    asked = []
+    monkeypatch.setattr(watch, "request_retry", lambda: asked.append(1))
+    assert client.post("/api/watch/retry", json={}).status_code == 200 and asked == [1]
+
+
 @pytest.fixture
 def second(tmp_path):
     d = tmp_path / "Youth Media"

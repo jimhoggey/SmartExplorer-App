@@ -116,10 +116,38 @@ def test_apply_and_undo(tmp_path):
 def test_apply_partial_failure_is_journaled(tmp_path):
     a = tmp_path / "a.png"
     a.write_bytes(b"a")
-    pairs = [(str(a), str(tmp_path / "x.png")), (str(tmp_path / "missing.png"), str(tmp_path / "y.png"))]
+    pairs = [(str(tmp_path / "missing.png"), str(tmp_path / "y.png")), (str(a), str(tmp_path / "x.png"))]
     r = renamer.apply(pairs, tmp_path / "journal")
-    assert r["renamed"] == 1 and "missing.png" in r["error"]
+    assert r["renamed"] == 1 and "missing.png" in r["error"]  # it carried on past the failure
+    assert r["moved"] == [[str(a), str(tmp_path / "x.png")]]
     assert len(renamer.undo(r["journal"], tmp_path / "journal")) == 1 and a.exists()
+
+
+def in_use_error():
+    """What Windows raises for a file another program has open (ProPresenter, say)."""
+    e = PermissionError(13, "The process cannot access the file because it is being used by another process")
+    e.winerror = 32
+    return e
+
+
+def test_a_file_in_use_does_not_stop_the_others_and_is_explained(tmp_path, monkeypatch):
+    files = [tmp_path / n for n in ("a.png", "b.png", "c.png")]
+    for f in files:
+        f.write_bytes(b"x")
+    real = os.rename
+
+    def rename(old, new):
+        if Path(old).name == "b.png":
+            raise in_use_error()
+        real(old, new)
+
+    monkeypatch.setattr(renamer.os, "rename", rename)
+    pairs = [(str(f), str(f.with_name("New " + f.name))) for f in files]
+    r = renamer.apply(pairs, tmp_path / "journal")
+    assert r["renamed"] == 2 and [Path(old).name for old, _ in r["moved"]] == ["a.png", "c.png"]
+    assert [x["path"] for x in r["failed"]] == [str(files[1])] and r["failed"][0]["to"] == pairs[1][1]
+    assert "open in another program" in r["failed"][0]["why"] and "b.png" in r["error"]
+    assert files[1].exists() and (tmp_path / "New a.png").exists() and (tmp_path / "New c.png").exists()
 
 
 def test_plan_skips_missing_files(tmp_path):

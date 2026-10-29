@@ -37,6 +37,7 @@ FOLDER_GRACE = 120  # how long a folder may be missing or unreadable (a Drive re
 FORGET = 600  # a known file's name is forgotten once it has been gone from the folder this long
 LOCK_TRIES = 8  # a quarter of a second apart: the window's running() check holds the lock for a moment
 DRIVE_EVERY = 30  # seconds between looks at whether Google Drive is running
+RENAME_AGAIN = 60  # seconds between tries at renaming a file that was in use (free: its name is kept)
 LOG_LIMIT = 1_000_000  # bytes; then the log starts again, keeping one old file
 
 PROBLEMS = {  # each is said once, and again only after it cleared and came back
@@ -214,6 +215,9 @@ class FolderWatch:
         self.absent = {}  # known name -> when it was first missing from the folder
         self.unavailable_since = None  # when the folder went missing or unreadable
         self.batches = 0
+        # id -> {"to", "why", "in_use", "next"}: named already, but the rename failed (the file
+        # was open in another program, say). Renamed again with that name: the AI is not asked twice.
+        self.stuck = {}
 
     def id(self, p):
         return (str(p), self.seen[p]["print"])
@@ -287,16 +291,19 @@ class FolderWatch:
         fail = self.failures.get(fid)
         return bool(fail and fail["next"] > now)
 
+    def waiting(self, fid, now):
+        """Left out of batches for now: given up, waiting to be tried again, or named
+        already and only waiting to be renamed (stuck)."""
+        return fid in self.given_up or fid in self.stuck or self.later(fid, now)
+
     def ready(self, now):
         out = [p for p, e in self.seen.items()
-               if self.id(p) not in self.given_up and now - e["since"] >= SETTLE
-               and not self.later(self.id(p), now) and _opens(p)]
+               if not self.waiting(self.id(p), now) and now - e["since"] >= SETTLE and _opens(p)]
         return sorted(out, key=scanner.natural_key)
 
     def settling(self, ready, now):
-        """New files not ready yet: still downloading (not those waiting to be tried again)."""
-        return [p for p in self.seen if p not in ready and self.id(p) not in self.given_up
-                and not self.later(self.id(p), now)]
+        """New files not ready yet: still downloading (not those left out for now)."""
+        return [p for p in self.seen if p not in ready and not self.waiting(self.id(p), now)]
 
     def failed(self, fid, paid, now):
         """Count a failure. Returns True when the file is now left alone until the next start-up."""
@@ -401,6 +408,9 @@ class Watcher:
             self.checked = True
             if not any(fw.seen for fw in looked) and self.drive_up is not False:  # Drive off: "no new files" would mislead
                 self.say("Checked %s: no new files." % _names(looked))
+        again = _take_retry()  # Try again in the window: rename stuck files now
+        for fw in looked:
+            self._retry_stuck(fw, now, force=again)
         # At most one batch per look, and folders take turns: a batch can take minutes, and
         # judging another folder on a look taken before it would split a deck still arriving.
         keys = [known.key(fw.path) for fw in looked]
@@ -456,12 +466,16 @@ class Watcher:
         if now - self.started >= wait + FOLDER_GRACE and now - self.drive_down_since >= FOLDER_GRACE:
             self._problem("drive", s, folder=_names(in_drive))
 
+    def _stuck(self):
+        return [e for fw in self.folders.values() for e in fw.stuck.values()]
+
     def _status(self, state, message):
-        if state == "watching" and any(p == "drive" or "|" in p for p in self.problems):
-            state = "warning"  # watching, but a folder is missing or nothing new can arrive
+        if state == "watching" and (any(p == "drive" or "|" in p for p in self.problems) or self._stuck()):
+            state = "warning"  # watching, but a folder is missing, nothing new can arrive, or a file is stuck
         paths = [str(fw.path) for fw in self.folders.values()]
         data = {"state": state, "message": message, "folder": paths[0] if paths else "", "folders": paths,
-                "heartbeat": time.time(), "last_batch": self.last_batch, "problems": sorted(self.problems)}
+                "heartbeat": time.time(), "last_batch": self.last_batch, "problems": sorted(self.problems),
+                "stuck": len(self._stuck())}  # files named but not renamed yet: the window offers Try again
         try:
             config.write_json(watch_dir() / "status.json", data)
         except OSError:
@@ -476,6 +490,11 @@ class Watcher:
             return text + " · " + "; ".join(missing)
         if "drive" in self.problems:
             return text + " · Google Drive isn't running"
+        stuck = self._stuck()
+        if stuck:
+            reason = ": it's open in another program" if len(stuck) == 1 and stuck[0]["in_use"] else \
+                ": they're open in another program" if any(e["in_use"] for e in stuck) else ""
+            return text + " · %s couldn't be renamed%s" % (_plural(len(stuck), "file"), reason)
         if self.last_batch and self.last_batch.get("key") in self.folders:  # not a folder no longer watched
             text += " · last batch %s, %s" % (_clock_text(self.last_batch["at"]), _plural(self.last_batch["count"], "file"))
             if len(fws) > 1:
@@ -538,7 +557,7 @@ class Watcher:
         log("Batch in %s: %s" % (fw.name, ", ".join(p.name for p in paths)))
         failed, done = {}, {}  # failed: id -> whether a paid request failed for it; done: id -> final name
         try:
-            refused = self._name_and_rename(fw, key, model, profile, items, ids, failed, done)
+            refused = self._name_and_rename(fw, key, model, profile, items, ids, failed, done, now)
         except Exception as e:  # a full disk, say: counted, so it cannot repeat (and pay) every look
             log("Batch failed: %r" % (e,))
             refused = None
@@ -555,6 +574,7 @@ class Watcher:
             self.last_batch = {"at": now, "count": len(done), "folder": fw.name, "key": known.key(fw.path)}
         if done or later:
             self.say(_done_text(list(done.values()), later, where))
+        self._say_stuck(fw)
         if gave_up:
             log("Left alone until the next start-up: " + ", ".join(gave_up))
             if len(gave_up) == 1:
@@ -562,7 +582,7 @@ class Watcher:
             else:
                 self.say("Couldn't name %s. They're still in %s under their old names." % (_list(gave_up), fw.name))
 
-    def _name_and_rename(self, fw, key, model, profile, items, ids, failed, done):
+    def _name_and_rename(self, fw, key, model, profile, items, ids, failed, done, now):
         """Read what is not yet described, name the batch and rename it, filling failed
         and done. Returns OpenRouter's refusal status (402, say) or None. Descriptions are
         kept before anything else can go wrong, so paid work is never thrown away."""
@@ -591,11 +611,61 @@ class Watcher:
                 return out["name_status"]  # refused, not charged: the descriptions wait for the next try
             failed.update((f, True) for _, f in described)  # never rename with the fallback words
             return None
-        done.update(self._rename(fw, items, described, out["results"], failed))
+        done.update(self._rename(fw, items, described, out["results"], failed, now))
         return None
 
-    def _rename(self, fw, items, described, results, failed):
-        """Rename the named files. Returns {id: final name} for each file now ready."""
+    def _say_stuck(self, fw):
+        """Say once which files couldn't be renamed, and that it will try again by itself."""
+        new = [(fid, e) for fid, e in fw.stuck.items() if not e["said"]]
+        if not new:
+            return
+        for _, e in new:
+            e["said"] = True
+        names = [Path(fid[0]).name for fid, _ in new]
+        first = new[0][1]
+        close = ("Close it there; " if len(new) == 1 else "Close them there; ") if first["in_use"] else ""
+        self.say("Couldn't rename %s%s: %s. %sSmart Explorer tries again every minute, or click Try again in "
+                 "Smart Explorer." % (_list(names), self._where(fw), first["why"], close))
+
+    def _retry_stuck(self, fw, now, force=False):
+        """Rename again the files that were named but couldn't be renamed (in use, say),
+        with the name they were given: the AI is not asked again, so it costs nothing and
+        is tried every RENAME_AGAIN seconds, or at once after Try again."""
+        due = [(fid, e) for fid, e in fw.stuck.items() if force or e["next"] <= now]
+        wanted, ids = [], {}
+        for fid, e in due:
+            try:
+                same = known.fingerprint(fid[0]) == fid[1]
+            except OSError:
+                same = False
+            if not same:  # gone, or changed since it was named (then it is a new file again)
+                del fw.stuck[fid]
+                continue
+            wanted.append({"path": fid[0], "new_name": Path(e["to"]).stem})
+            ids[fid[0]] = fid
+        if not wanted:
+            return
+        pairs = renamer.plan(wanted)
+        res = renamer.apply(pairs)
+        for old, new in res["moved"]:
+            fid = ids[old]
+            del fw.stuck[fid]
+            fw.descs.pop(fid, None)
+            fw.remember([(new, fid[1])])
+            log("Renamed %s -> %s (after it couldn't be renamed)" % (Path(old).name, Path(new).name))
+            self.say("Renamed %s to %s%s: ready for ProPresenter." % (Path(old).name, Path(new).stem, self._where(fw)))
+        for x in res["failed"]:
+            fw.stuck[ids[x["path"]]].update(why=x["why"], in_use=x["in_use"], next=now + RENAME_AGAIN)
+        planned = {old for old, _ in pairs}
+        for path, fid in ids.items():
+            if path not in planned and fid in fw.stuck:  # nothing to do: it has that name already
+                del fw.stuck[fid]
+                fw.remember([(path, fid[1])])
+
+    def _rename(self, fw, items, described, results, failed, now):
+        """Rename the named files. Returns {id: final name} for each file now ready. A file
+        that can't be renamed (open in another program, say) keeps the name it was given in
+        fw.stuck, to be renamed again later without asking the AI again."""
         nums = scanner.order_numbers(items) if scanner.looks_numbered(items) else None
         planned, wanted = {}, []
         for (it, f), r in zip(described, results):
@@ -611,8 +681,8 @@ class Watcher:
             planned[it["path"]] = f
         pairs = renamer.plan(wanted)
         res = renamer.apply(pairs)
-        moved = dict(pairs[:res["renamed"]])
-        stuck = {old for old, _ in pairs[res["renamed"]:]}
+        moved = dict(res["moved"])
+        stuck = {x["path"]: x for x in res["failed"]}
         for old, new in moved.items():
             log("Renamed %s -> %s" % (Path(old).name, Path(new).name))
         if res.get("error"):
@@ -620,7 +690,10 @@ class Watcher:
         done = {}
         for path, f in planned.items():
             if path in stuck:
-                failed[f] = False  # the rename failed on this computer: nothing was charged for it
+                if Path(path).is_file():  # still there: keep its name, rename it later (free: no AI)
+                    x = stuck[path]
+                    fw.stuck[f] = {"to": x["to"], "why": x["why"], "in_use": x["in_use"],
+                                   "next": now + RENAME_AGAIN, "said": False}
                 continue
             final = Path(moved.get(path, path))
             if final.is_file():
@@ -687,6 +760,21 @@ def request_stop():
 def _take_stop():
     try:
         _stop_file().unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def request_retry():
+    """Try again (the window's button): rename the stuck files at the next look."""
+    path = watch_dir() / "retry"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("retry")
+
+
+def _take_retry():
+    try:
+        (watch_dir() / "retry").unlink()
         return True
     except FileNotFoundError:
         return False
