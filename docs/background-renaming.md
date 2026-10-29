@@ -20,6 +20,7 @@ If it watches more than one folder, each message says which one, for example "3 
 | OpenRouter didn't accept the key, or is out of credit | Tell the tech lead. The files keep their old names until it's fixed, and they still work in ProPresenter. |
 | it has reached this month's limit | Tell the tech lead. |
 | it couldn't name a file | That file keeps its old name and still works in ProPresenter. |
+| it couldn't rename a file: it's open in another program | Nothing to do: it renames it by itself once the file is closed. To do it now, close the file in ProPresenter (after the service), then click **Try again** in Smart Explorer. |
 
 Never rename or move files in that folder during a service. If the computer goes to sleep, nothing is renamed until it wakes up.
 

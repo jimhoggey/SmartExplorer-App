@@ -68,10 +68,38 @@ def test_image_b64(png):
     assert img.width <= 1024 and img.height <= 512
 
 
-def test_video_frames_b64(mp4):
-    frames = prep.video_frames_b64(mp4)
-    assert len(frames) == 3
-    assert all(_decode(f).format == "JPEG" for f in frames)
+def test_video_frame_b64_is_one_early_frame(mp4):
+    frame = prep.video_frame_b64(mp4)
+    assert isinstance(frame, str) and _decode(frame).format == "JPEG"
+
+
+def frames_of(levels, fps=10.0, duration=None, size=(8, 8), seen=None):
+    """A stand-in for imageio_ffmpeg.read_frames: frames of these brightness levels."""
+    def read_frames(path):
+        yield {"size": size, "fps": fps, "duration": duration or len(levels) / fps}
+        for level in levels:
+            if seen is not None:
+                seen.append(level)
+            yield bytes([level]) * (size[0] * size[1] * 3)
+    return read_frames
+
+
+def test_video_frame_skips_a_fade_from_black(monkeypatch):
+    seen = []
+    monkeypatch.setattr(prep.imageio_ffmpeg, "read_frames", frames_of([0] * 5 + [200] * 50, seen=seen))
+    frame = _decode(prep.video_frame_b64("clip.mp4")).convert("L")
+    assert frame.getpixel((2, 2)) > 150 and len(seen) == 6  # the first frame with picture, then it stops
+
+
+def test_a_long_video_is_only_read_at_its_start(monkeypatch):
+    seen = []
+    monkeypatch.setattr(prep.imageio_ffmpeg, "read_frames", frames_of([200] * 6000, seen=seen))  # 10 minutes
+    prep.video_frame_b64("long.mp4")
+    assert len(seen) == 1
+    seen.clear()
+    monkeypatch.setattr(prep.imageio_ffmpeg, "read_frames", frames_of([0] * 6000, seen=seen))  # black throughout
+    assert _decode(prep.video_frame_b64("dark.mp4")).convert("L").getpixel((2, 2)) < 20  # the first frame, then
+    assert len(seen) == prep.EARLY_SECONDS * 10  # a few seconds searched, not the whole video
 
 
 def test_thumb_b64(png, mp4, pdf):
@@ -85,7 +113,7 @@ def test_encode(png, mp4):
     assert len(e["images"]) == 1 and e["text"] == ""
     assert e["facts"] == {"size": "2000x1000", "aspect": "2.00:1 landscape"}
     v = prep.encode({"path": mp4, "kind": "video"})
-    assert len(v["images"]) == 3 and v["facts"]["duration"] == "1s" and v["facts"]["aspect"] == "1:1 square"
+    assert len(v["images"]) == 1 and v["facts"]["duration"] == "1s" and v["facts"]["aspect"] == "1:1 square"
 
 
 def test_encode_pdf_renders_first_page_and_reads_text(pdf):
@@ -168,7 +196,7 @@ def test_short_video_with_long_audio_uses_last_frame(monkeypatch):
             yield bytes([i * 40]) * (8 * 8 * 3)
 
     monkeypatch.setattr(prep.imageio_ffmpeg, "read_frames", frames)
-    assert len(prep.video_frames_b64("clip.mp4")) == 1
+    assert _decode(prep.video_frame_b64("clip.mp4")).format == "JPEG"
 
 
 def test_many_pdfs_in_parallel_do_not_crash(tmp_path):

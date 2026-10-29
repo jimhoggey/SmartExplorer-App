@@ -35,10 +35,31 @@ def plan(items):
     return out
 
 
+IN_USE = (32, 33)  # Windows: the file is open in another program (sharing or lock violation)
+
+
+def in_use(e):
+    return getattr(e, "winerror", None) in IN_USE
+
+
+def why(e):
+    """Why a rename failed, in plain words."""
+    if in_use(e):
+        return "it's open in another program (ProPresenter, say)"
+    if isinstance(e, FileNotFoundError):
+        return "it isn't there any more"
+    if isinstance(e, PermissionError):
+        return "Smart Explorer isn't allowed to rename it (it may be open in another program, or read-only)"
+    return e.strerror or str(e)
+
+
 def apply(pairs, journal_dir=None):
+    """Rename each (old, new) pair, carrying on past a file that can't be renamed (one in
+    use must not stop the rest). Returns {"journal", "renamed", "moved": [[old, new]...],
+    "failed": [{"path", "to", "why", "in_use"}...], "error"?}; the journal holds what moved."""
     journal_dir = Path(journal_dir or config.CONFIG_DIR / "journal")
     journal_dir.mkdir(parents=True, exist_ok=True)
-    out = {"journal": uuid.uuid4().hex, "renamed": 0}
+    out = {"journal": uuid.uuid4().hex, "renamed": 0, "moved": [], "failed": []}
     for old, new in pairs:
         try:
             # os.rename silently replaces an existing file on macOS and Linux.
@@ -46,11 +67,17 @@ def apply(pairs, journal_dir=None):
                 raise FileExistsError(errno.EEXIST, "a file with that name appeared since the names were checked")
             os.rename(old, new)
         except OSError as e:
-            out["error"] = "Could not rename %s: %s" % (Path(old).name, e.strerror or e)
-            break
+            out["failed"].append({"path": old, "to": new, "why": why(e), "in_use": in_use(e)})
+            continue
+        out["moved"].append([old, new])
         out["renamed"] += 1
+    if out["failed"]:
+        first = out["failed"][0]
+        others = len(out["failed"]) - 1
+        out["error"] = "Couldn't rename %s%s: %s" % (Path(first["path"]).name,
+                                                     " and %d more" % others if others else "", first["why"])
     try:
-        (journal_dir / (out["journal"] + ".json")).write_text(json.dumps(pairs[:out["renamed"]]), "utf-8")
+        (journal_dir / (out["journal"] + ".json")).write_text(json.dumps(out["moved"]), "utf-8")
     except OSError as e:  # the files are renamed already: say so, rather than lose track of them
         msg = "The undo record could not be saved: %s" % (e.strerror or e)
         out["error"] = "%s. %s" % (out["error"], msg) if "error" in out else msg

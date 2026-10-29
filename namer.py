@@ -172,8 +172,9 @@ def read_batch(key, model, items, encoded, profile=conventions.DEFAULT_PROFILE, 
     content = []
     for n, (item, enc) in enumerate(zip(items, encoded), 1):
         label = "File %d of %d. Facts: %s" % (n, len(items), json.dumps(_facts(item, enc)))
-        if item["kind"] == "video" and len(enc["images"]) > 1:
-            label += "\nThe next images are frames from early, middle and late in this video."
+        if item["kind"] == "video":
+            label += ("\nThis is a video: the next image is one early frame. Its file name and length often say "
+                      "what it is (a countdown, a loop, a promo, the sermon bumper): use them as well as the frame.")
         content.append({"type": "text", "text": label})
         content += [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in enc["images"]]
         if enc.get("text"):

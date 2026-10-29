@@ -230,8 +230,8 @@ def api_rename():
     w = config.watch_settings()
     if w["enabled"]:  # renamed here, so background renaming leaves them alone, in whichever watched folder
         for folder in w["folders"]:
-            known.add_paths(folder, [new for _, new in pairs[:out["renamed"]]])
-    return jsonify(dict(out, moved=pairs[:out["renamed"]]))
+            known.add_paths(folder, [new for _, new in out["moved"]])
+    return jsonify(out)  # moved, and failed: [{path, to, why}] for files that couldn't be renamed (in use, say)
 
 
 @app.post("/api/undo")
@@ -355,6 +355,14 @@ def api_watch_save():
 def api_watch_start():
     if config.watch_settings()["enabled"] and not watch.running():
         spawn_watcher()
+    return jsonify(watch_state())
+
+
+@app.post("/api/watch/retry")
+def api_watch_retry():
+    """Try again: background renaming renames the files that were in use, with the names
+    they were already given (no AI), at its next look."""
+    watch.request_retry()
     return jsonify(watch_state())
 
 

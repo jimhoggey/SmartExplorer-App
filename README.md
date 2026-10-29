@@ -2,7 +2,7 @@
 
 Renames files by what is in them, using a vision model via OpenRouter. Built for ProPresenter media (a Canva export of `1.png … 24.png` becomes `Giving - Love Offering.png`, `Sermon - Anchored Wk 3 - Hebrews 6.19.png`), and just as happy naming photos, screenshots and PDFs on disk. You review and edit every name before anything is renamed, and there is an Undo.
 
-Reads images (`png jpg webp gif bmp tiff`), iPhone photos (`heic`), PDFs (first page plus its text) and videos (`mp4 mov m4v`, three frames).
+Reads images (`png jpg webp gif bmp tiff`), iPhone photos (`heic`), PDFs (first page plus its text) and videos (`mp4 mov m4v`: one early frame, past any fade from black, plus the file name and length; only the first seconds are decoded, so a long or 4K video is as quick as a short one).
 
 ## Install
 
@@ -62,6 +62,8 @@ Settings shows what naming has cost this month and in all; *Test key* shows what
 The full naming convention, with examples, is in [docs/naming-convention.md](docs/naming-convention.md). To change it for good (say, Offering instead of Giving), open *Settings → Naming prompts → View and edit*. Each style has three parts you can read and change: how to name the files, the categories, and what to look for in each file. *Show full prompt* shows exactly what the AI is sent. Edits are saved on this computer, in `~/.smart-explorer/config.json`, and *Reset to default* puts the original back. The defaults live in `conventions.py`.
 
 Names are sanitised for Windows, capped at 100 characters, and get ` (2)`, ` (3)` on collisions. Existing files are never overwritten. Undo journals live in `~/.smart-explorer/journal/`.
+
+A file that can't be renamed (on Windows, usually because it is open in another program such as ProPresenter) doesn't stop the others. Smart Explorer says which file and why, keeps the name it chose, and offers **Try again**, which renames it with that name without asking the AI again. Background renaming does the same by itself every minute, says so once, and the status bar has the same **Try again**.
 
 ## Background renaming (watch folders)
 
