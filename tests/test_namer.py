@@ -139,11 +139,12 @@ def test_describe_sends_pdf_text_and_video_hint(monkeypatch):
     seen = []
     stub(monkeypatch, READ, seen)
     namer.describe("k", "m", dict(ITEM, kind="pdf"), dict(ENC, text="TAX INVOICE 4471"))
-    namer.describe("k", "m", dict(ITEM, kind="video"), dict(ENC, images=["a", "b", "c"]))
+    namer.describe("k", "m", dict(ITEM, kind="video"), dict(ENC, images=["a"]))
     pdf, video = (json.loads(r.data)["messages"][1]["content"] for r in seen)
     assert any("TAX INVOICE 4471" in c.get("text", "") for c in pdf)
-    assert sum(c["type"] == "image_url" for c in video) == 3
-    assert any("frames" in c.get("text", "") for c in video)
+    assert sum(c["type"] == "image_url" for c in video) == 1
+    hint = " ".join(c.get("text", "") for c in video)
+    assert "one early frame" in hint and "file name" in hint  # one frame: lean on the name and length too
 
 
 def test_describe_error(monkeypatch):

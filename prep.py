@@ -6,7 +6,7 @@ import re
 import threading
 
 import imageio_ffmpeg
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageStat
 
 try:  # iPhone photos. Optional so a missing wheel never stops slides working.
     import pillow_heif
@@ -17,6 +17,8 @@ except ImportError:
 
 MAX_SIDE = 1024
 PDF_MAX_SIDE = 1536  # documents carry smaller text than slides
+EARLY_SECONDS = 3  # of a video searched for a frame with picture, past a fade from black
+DARK = 16  # mean brightness (0-255) at or under which a frame counts as black
 PDF_TEXT_LIMIT = 2000
 PDFIUM = threading.Lock()  # PDFium is not thread-safe: two PDFs at once can crash the process
 RATIOS = [("16:9", 16 / 9), ("4:3", 4 / 3), ("3:2", 3 / 2), ("1:1", 1.0), ("4:5", 4 / 5), ("2:3", 2 / 3),
@@ -79,26 +81,30 @@ def image_b64(path, max_side=MAX_SIDE):
     return _jpeg_b64(ImageOps.exif_transpose(_open(path)), max_side)
 
 
-def video_frames_b64(path, n=3, max_side=MAX_SIDE, with_meta=False):
+def video_frame_b64(path, max_side=MAX_SIDE, with_meta=False):
+    """One early frame of a video: the first with picture in its first EARLY_SECONDS (a
+    fade from black is skipped), else the very first. Only those frames are decoded,
+    never the whole video, so a long or 4K video costs no more than a short one; the
+    file name and length (facts) do the rest."""
     gen = imageio_ffmpeg.read_frames(path)
     meta = next(gen)
-    total = max(int(meta["duration"] * meta["fps"]), 1)
-    wanted = sorted({min(int(total * f), total - 1) for f in (0.1, 0.5, 0.9)[:n]})
-    out, last = [], None
+    limit = max(1, int((meta.get("fps") or 25) * EARLY_SECONDS))
+    first = chosen = None
     try:
         for i, frame in enumerate(gen):
-            last = frame
-            if i in wanted:
-                out.append(_jpeg_b64(Image.frombytes("RGB", meta["size"], frame), max_side))
-            if i >= wanted[-1]:
+            img = Image.frombytes("RGB", meta["size"], frame)
+            first = first or img
+            if ImageStat.Stat(img.convert("L")).mean[0] > DARK:
+                chosen = img
+                break
+            if i + 1 >= limit:
                 break
     finally:
         gen.close()
-    if not out and last is not None:  # duration came from a longer audio track: fewer frames than expected
-        out.append(_jpeg_b64(Image.frombytes("RGB", meta["size"], last), max_side))
-    if not out:
+    if first is None:
         raise ValueError("No frames decoded from %s" % path)
-    return (out, meta) if with_meta else out
+    frame = _jpeg_b64(chosen or first, max_side)
+    return (frame, meta) if with_meta else frame
 
 
 def _pdf(path, max_side, text_limit=PDF_TEXT_LIMIT):
@@ -123,7 +129,7 @@ def _pdf(path, max_side, text_limit=PDF_TEXT_LIMIT):
 
 def thumb_b64(path, kind):
     if kind == "video":
-        return video_frames_b64(path, 1, 240)[0]
+        return video_frame_b64(path, 240)
     if kind == "pdf":
         return _jpeg_b64(_pdf(path, 240, text_limit=0)[0], 240)
     return image_b64(path, 240)
@@ -133,12 +139,12 @@ def encode(item):
     """{"images": [base64 JPEG...], "text": str, "facts": {...}} for one scanned item."""
     path, kind = item["path"], item["kind"]
     if kind == "video":
-        frames, meta = video_frames_b64(path, with_meta=True)
+        frame, meta = video_frame_b64(path, with_meta=True)
         w, h = meta["size"]
         facts = {"size": "%dx%d" % (w, h), "aspect": aspect(w, h)}
         if meta.get("duration"):
             facts["duration"] = "%ds" % round(meta["duration"])
-        return {"images": frames, "text": "", "facts": facts}
+        return {"images": [frame], "text": "", "facts": facts}
     if kind == "pdf":
         img, text, pages = _pdf(path, PDF_MAX_SIDE)
         facts = {"pages": pages, "aspect": aspect(*img.size)}
