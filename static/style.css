@@ -326,6 +326,24 @@ dialog .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
 dialog input.bad { border-color: var(--err); box-shadow: 0 0 0 3px rgba(217, 45, 32, .14); }
+.wfield { margin-bottom: 16px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.wlist { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.wlist li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2);
+}
+.wlist li .path { flex: 1; min-width: 0; }
+.wlist li small {
+  display: block; min-height: 0; margin-top: 1px; font-family: var(--mono); font-size: 11.5px; font-weight: 400;
+  color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wlist li.bad { border-color: var(--err); background: var(--err-soft); }
+.wlist li.none { font-weight: 400; color: var(--mute); background: none; border-style: dashed; }
+.wlist button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
+.keyrow #wAdd { margin-left: -2px; }
 #updateMsg:empty { display: none; }
 
 /* ---------- update banner ---------- */

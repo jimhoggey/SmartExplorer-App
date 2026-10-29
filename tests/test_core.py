@@ -172,15 +172,31 @@ def test_watch_settings_defaults_and_clamps(tmp_path, monkeypatch):
     assert config.watch_settings() == config.WATCH_DEFAULTS
     config.save(watch={"enabled": "yes", "folder": 7, "startup_wait_min": 99, "monthly_limit_usd": -3, "autostart": True})
     s = config.watch_settings()
-    assert s["enabled"] is False and s["folder"] == "" and s["autostart"] is True
+    assert s["enabled"] is False and s["folders"] == [] and s["autostart"] is True
     assert s["startup_wait_min"] == 30 and s["monthly_limit_usd"] == 0.0
-    config.save(watch={"enabled": True, "folder": "/x", "startup_wait_min": True, "monthly_limit_usd": 12.5})
+    config.save(watch={"enabled": True, "folders": ["/x"], "startup_wait_min": True, "monthly_limit_usd": 12.5})
     s = config.watch_settings()
-    assert s["enabled"] is True and s["folder"] == "/x" and s["startup_wait_min"] == 3 and s["monthly_limit_usd"] == 12.5
+    assert s["enabled"] is True and s["folders"] == ["/x"] and s["startup_wait_min"] == 3 and s["monthly_limit_usd"] == 12.5
     (tmp_path / "config.json").write_text("{broken")
     assert config.watch_settings() == config.WATCH_DEFAULTS
     config.save(watch="nonsense")
     assert config.watch_settings() == config.WATCH_DEFAULTS
+
+
+def test_watch_settings_folders_carry_the_old_single_folder_over(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    s = config.watch_settings()
+    assert s["folders"] == [] and "folder" not in s
+    s["folders"].append("/changed")  # a copy: the defaults stay as they are
+    assert config.WATCH_DEFAULTS["folders"] == []
+    config.save(watch={"enabled": True, "folder": "/x/Sunday Media"})  # saved before several folders
+    assert config.watch_settings()["folders"] == ["/x/Sunday Media"]
+    config.save(watch={"folders": ["G:/My Drive/Sunday", "g:\\my drive\\sunday\\", '"G:\\My Drive\\Youth"']})
+    assert config.watch_settings()["folders"] == ["G:/My Drive/Sunday", "G:\\My Drive\\Youth"]  # Windows spellings, Copy as path quotes
+    many = ["/x/A", "/x/a/", 7, "", " ", "/x/B"] + ["/x/F%d" % i for i in range(20)]
+    config.save(watch={"folders": many, "folder": "/x/ignored"})
+    folders = config.watch_settings()["folders"]
+    assert folders[:3] == ["/x/A", "/x/B", "/x/F0"] and len(folders) == config.MAX_FOLDERS
 
 
 def _named(*names, folder="/x/Slides"):

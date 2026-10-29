@@ -3,7 +3,7 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
-  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchStart", "wOn", "wFields", "wFolder", "wPick", "wProfile",
+  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchStart", "wOn", "wFields", "wList", "wFolder", "wPick", "wAdd", "wProfile",
   "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wShowStartup", "wWaitRow", "wStatus", "wLog"]
   .reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
@@ -24,7 +24,7 @@ const EMPTY_TEXT = els.emptyText.textContent;
 async function api(path, body) {
   const r = await fetch("/api/" + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || r.statusText);
+  if (!r.ok) throw Object.assign(new Error(data.error || r.statusText), { data });  // data.folder: which one is wrong
   return data;
 }
 
@@ -612,7 +612,9 @@ function fillWatch() {
   if (!w) return;
   const s = w.settings;
   els.wOn.checked = s.enabled;
-  els.wFolder.value = s.folder;
+  watchFolders = [...s.folders];
+  els.wFolder.value = "";
+  renderFolders();
   els.wProfile.innerHTML = "";
   for (const p of status.profiles) els.wProfile.add(new Option(p.label, p.id));
   els.wProfile.value = s.profile;
@@ -646,35 +648,103 @@ function showAutostart() {
   els.wWaitRow.hidden = !ticked;
 }
 
+// The watched folders while Settings is open; saved with Save.
+let watchFolders = [];
+const MAX_FOLDERS = 10;
+// A pasted path tidied: Windows' "Copy as path" puts quotes round it.
+const cleanFolder = (p) => (p || "").trim().replace(/^"+|"+$/g, "").trim();
+// One folder, one key, however it is written (as config.folder_key): G:/x, g:\x\ …
+const folderKey = (p) => cleanFolder(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+const folderName = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+
+function renderFolders(bad) {
+  els.wList.innerHTML = "";
+  if (!watchFolders.length) {
+    const li = document.createElement("li");
+    li.className = "none";
+    li.textContent = "No folders yet: paste a path or click Choose, then Add.";
+    els.wList.appendChild(li);
+  }
+  watchFolders.forEach((path, i) => {
+    const li = document.createElement("li"), label = document.createElement("span"), full = document.createElement("small");
+    const remove = document.createElement("button");
+    label.className = "path";
+    label.textContent = folderName(path);
+    full.textContent = path;
+    full.title = path;
+    label.appendChild(full);
+    remove.type = "button";
+    remove.className = "link";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", "Stop watching " + folderName(path));
+    remove.onclick = () => { watchFolders.splice(i, 1); renderFolders(); };
+    li.classList.toggle("bad", !!bad && folderKey(bad) === folderKey(path));
+    li.append(label, remove);
+    els.wList.appendChild(li);
+  });
+}
+
+// Adds the path in the box (or the one given). Returns an error message, or "".
+function addFolder(path = els.wFolder.value) {
+  path = cleanFolder(path);
+  els.wFolder.classList.remove("bad");
+  if (!path) return "Paste a folder's path or click Choose first.";
+  if (watchFolders.some((p) => folderKey(p) === folderKey(path))) { els.wFolder.value = ""; return ""; }
+  if (watchFolders.length >= MAX_FOLDERS) return `Smart Explorer can watch up to ${MAX_FOLDERS} folders.`;
+  watchFolders.push(path);
+  els.wFolder.value = "";
+  renderFolders();
+  return "";
+}
+
 function watchDraft() {
   return {
-    enabled: els.wOn.checked, folder: els.wFolder.value.trim(), profile: els.wProfile.value,
+    enabled: els.wOn.checked, folders: [...watchFolders], profile: els.wProfile.value,
     startup_wait_min: Math.round(Number(els.wWait.value) || 0), monthly_limit_usd: Number(els.wLimit.value) || 0,
     autostart: els.wAuto.checked,
   };
 }
 
-// Saves Watch a folder when it changed. Returns false when the user backed out.
+function leftAlone(path, n, named) {
+  const who = named ? `${folderName(path)}: ` : "";
+  return n === 0 ? (named ? `${who}it's empty.` : "")
+    : n === 1 ? `${who}${named ? "the" : "The"} file already in it will be left as it is.`
+    : `${who}${named ? "the" : "The"} ${n} files already in it will be left as they are.`;
+}
+
+// Saves Watch folders when it changed. Returns false when the user backed out.
 async function saveWatch() {
   if (!watchState || !watchFilled) return true;
-  const d = watchDraft(), s = watchState.settings;
-  if (!Object.keys(d).some((k) => d[k] !== s[k])) return true;
-  els.wFolder.classList.remove("bad");
-  const badFolder = (msg) => {  // nothing is saved: say so next to the box that needs fixing
-    els.wFolder.classList.add("bad");
-    els.wFolder.focus();
+  if (els.wFolder.value.trim()) {  // a path typed or chosen but not added yet: add it, don't drop it
+    const why = addFolder();
+    if (why) {
+      els.wFolder.classList.add("bad");
+      els.wFolder.focus();
+      throw new Error(why + " Nothing was saved yet.");
+    }
+  }
+  const d = watchDraft(), s = watchState.settings, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (Object.keys(d).every((k) => same(d[k], s[k]))) return true;
+  renderFolders();
+  const bad = (folder, msg) => {  // nothing is saved: say so next to what needs fixing
+    if (folder) renderFolders(folder);
+    else { els.wFolder.classList.add("bad"); els.wFolder.focus(); }
     return new Error(msg + " Nothing was saved yet.");
   };
-  if (d.enabled && !d.folder) throw badFolder("Choose the folder to watch first.");
-  if (d.enabled && (!s.enabled || d.folder !== s.folder)) {
-    let count;
-    try { ({ count } = await api("watch/preview", { folder: d.folder })); } catch (e) { throw badFolder(e.message); }
-    const left = count === 0 ? "" : count === 1 ? "\n\nThe file already in it will be left as it is."
-      : `\n\nThe ${count} files already in it will be left as they are.`;
-    const msg = "Smart Explorer will rename new files in this folder by itself, even with this window closed." + left;
+  if (d.enabled && !d.folders.length) throw bad(null, "Add a folder to watch first.");
+  const watched = new Set(s.enabled ? s.folders.map(folderKey) : []);
+  const added = d.enabled ? d.folders.filter((f) => !watched.has(folderKey(f))) : [];
+  if (added.length) {
+    let counts;  // every folder is checked first, so the confirm never comes before a "can't find" error
+    try { ({ counts } = await api("watch/preview", { folders: d.folders })); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
+    const named = d.folders.length > 1;
+    const lines = added.map((f) => leftAlone(f, counts[f] || 0, named)).filter(Boolean);
+    const msg = `Smart Explorer will rename new files in ${named ? "these folders" : "this folder"} by itself, even with this window closed.`
+      + (lines.length ? "\n\n" + lines.join("\n") : "");
     if (!confirm(msg)) return false;
   }
-  const w = await api("watch", d);
+  let w;
+  try { w = await api("watch", d); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
   showWatch(w);
   if (w.error) throw new Error(w.error);
   return true;
@@ -761,9 +831,18 @@ els.wOn.onchange = () => (els.wFields.hidden = !els.wOn.checked);
 els.wAuto.onchange = showAutostart;
 els.wShowStartup.onclick = inDialog(els.keymsg, () => api("watch/startup-items", {}));
 els.wFolder.oninput = () => els.wFolder.classList.remove("bad");
+const addFromBox = () => {
+  const why = addFolder();
+  say(els.keymsg, why, !why);
+  if (why) { els.wFolder.classList.add("bad"); els.wFolder.focus(); }
+};
+els.wAdd.onclick = addFromBox;
+els.wFolder.onkeydown = (e) => {  // Enter adds the folder here, not Save
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); addFromBox(); }
+};
 els.wPick.onclick = inDialog(els.keymsg, async () => {
   const { folder } = await api("pick-folder");
-  if (folder) els.wFolder.value = folder;
+  if (folder) { els.wFolder.value = folder; addFromBox(); }
 });
 els.wLog.onclick = inDialog(els.keymsg, () => api("watch/log", {}));
 els.watchStart.onclick = guarded(async () => showWatch(await api("watch/start", {})));

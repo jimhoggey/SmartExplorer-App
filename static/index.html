@@ -112,13 +112,14 @@
       <button type="button" id="editPrompts">View and edit</button>
     </div>
     <fieldset class="watch">
-      <legend>Watch a folder</legend>
-      <label class="check"><input id="wOn" type="checkbox"><span>Rename new files in a folder by itself, with no window open</span></label>
+      <legend>Watch folders</legend>
+      <label class="check"><input id="wOn" type="checkbox"><span>Rename new files in these folders by itself, with no window open</span></label>
       <div id="wFields" hidden>
-        <label>Folder <small>The Google Drive folder ProPresenter's playlist watches. Files already in it are left as they are.</small>
-          <span class="keyrow"><input id="wFolder" type="text" spellcheck="false" placeholder="Paste the folder's path">
-            <button type="button" id="wPick">Choose</button></span>
-        </label>
+        <div class="wfield">Folders <small>The Google Drive folders ProPresenter's smart playlists watch. Files already in a folder are left as they are.</small>
+          <ul id="wList" class="wlist" aria-label="Watched folders"></ul>
+          <span class="keyrow"><input id="wFolder" type="text" spellcheck="false" placeholder="Paste a folder's path, or Choose" aria-label="Folder to add">
+            <button type="button" id="wPick">Choose</button><button type="button" id="wAdd">Add</button></span>
+        </div>
         <div class="pair">
           <label>Naming style <select id="wProfile"></select></label>
           <label>Monthly AI limit (US$) <input id="wLimit" type="number" min="0" step="1"></label>

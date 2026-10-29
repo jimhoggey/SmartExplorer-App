@@ -8,6 +8,8 @@ Smart Explorer names new slides and videos for ProPresenter by itself. Files put
 2. **"Renaming 12 new files…"**, then **"12 files renamed and ready for ProPresenter"**. Done: the files are in ProPresenter.
 3. Or **"Checked Sunday Media: no new files."** Nothing new this week. That's fine.
 
+If it watches more than one folder, each message says which one, for example "3 files renamed and ready for ProPresenter in Youth Media".
+
 ## When a message says something is wrong
 
 | The message says | What to do |
