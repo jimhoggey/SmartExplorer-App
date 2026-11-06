@@ -37,6 +37,10 @@ def main(argv=None):
     if "--watch" in args:
         import watch  # background renaming: no window, no web server
         return watch.main(now="--now" in args)  # --now: started from the window, so no start-up wait
+    if "--loop-test" in args:
+        import looptest  # the rig test for loop videos: no window, no web server
+        i = args.index("--loop-test")
+        return looptest.main(args[i + 1] if i + 1 < len(args) else "")
     url = serve()
     if os.environ.get("SMART_EXPLORER_HEADLESS") == "1":
         print(url, flush=True)

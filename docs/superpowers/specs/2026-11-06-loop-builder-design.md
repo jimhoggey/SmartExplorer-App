@@ -269,4 +269,5 @@ watching is off.
   while not playing.
 - How long a render takes on the PC, and whether ProPresenter and the livestream stay smooth while
   one runs outside service times.
-- The service times to enter.
+- Service times to enter: Sunday 8:00am to 3:00pm (Fynn, 6 Nov). Friday youth nights also use the
+  PC: confirm whether they count.
