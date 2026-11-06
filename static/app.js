@@ -847,7 +847,11 @@ async function saveWatch() {
       throw new Error(why + " Nothing was saved yet.");
     }
   }
-  const d = watchDraft(), s = watchState.settings, same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // The server sends keys sorted, the draft doesn't: compare values, so an unchanged table
+  // isn't sent (Save would then check every folder on disk just to save a new key).
+  const canon = (v) => Array.isArray(v) ? v.map(canon) : v && typeof v === "object"
+    ? Object.keys(v).sort().reduce((o, k) => ((o[k] = canon(v[k])), o), {}) : v;
+  const d = watchDraft(), s = watchState.settings, same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
   if (Object.keys(d).every((k) => same(d[k], s[k]))) return true;
   renderFolders();
   const bad = (folder, msg) => {  // nothing is saved: say so next to what needs fixing

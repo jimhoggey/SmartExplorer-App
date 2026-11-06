@@ -38,10 +38,14 @@ class Render:
     def __call__(self, paths, work):
         self.calls.append([p.name for p in paths])
         (Path(work) / "render.mp4").write_bytes(b"render %d" % len(self.calls))
+        total = 10.0 * len(paths) - (len(paths) - 1)
+        (Path(work) / "progress.txt").write_text("out_time_us=%d\nprogress=end\n" % (total * 1e6 * self.came_out))
         proc = Proc(self.code)
         proc.done = self.instant
         self.procs.append(proc)
-        return proc, 10.0 * len(paths) - (len(paths) - 1), []
+        return proc, total, []
+
+    came_out = 1.0  # how much of the loop ffmpeg says it wrote
 
 
 @pytest.fixture
@@ -256,12 +260,94 @@ def test_a_missing_loop_folder_is_said_after_two_minutes(setup):
     assert status()["state"] == "warning" and t["video"].is_file()
 
 
-def test_a_missing_save_to_folder_is_said(setup):
+def test_a_missing_save_to_folder_is_said_after_two_minutes(setup):
     t = setup
     t["out"].rmdir()
-    run(t, 40)
+    run(t, 115)
+    assert t["said"] == [] and loop_state()["text"] == "Can't find the folder to save to."
+    run(t, 10)
     assert t["said"][-1] == "Smart Explorer can't save Pre-service loop into ProPresenter Loops. Check the folder is there."
     assert t["render"].calls == []
+
+
+def test_a_loop_renaming_cant_get_to_still_renders(setup):
+    t = setup  # no OpenRouter key: renaming is paused, perhaps for days
+    config.save(watch=dict(config.watch_settings(), rows=[dict(t["row"], rename=True)]))
+    run(t, 40)
+    Image.new("RGB", (40, 20), "red").save(t["src"] / "3 Youth Camp.png")
+    run(t, 150)
+    assert any("no OpenRouter key" in s for s in t["said"])
+    assert len(t["render"].calls) == 2 and "3 Youth Camp.png" in t["render"].calls[-1]
+
+
+def test_a_loop_folder_gone_mid_render_stops_it_and_lets_the_next_loop_render(setup, tmp_path):
+    t = setup
+    post = tmp_path / "EndServiceLoop"
+    post.mkdir()
+    Image.new("RGB", (40, 20), "navy").save(post / "Farewell.png")
+    config.save(watch=dict(config.watch_settings(), rows=[t["row"], dict(t["row"], path=str(post), name="Post-service loop")]))
+    t["render"].instant = False
+    run(t, 35)
+    t["src"].rename(tmp_path / "moved")
+    t["render"].instant = True
+    run(t, 5)
+    assert t["render"].procs[0].killed
+    run(t, 10)
+    assert t["render"].calls[-1] == ["Farewell.png"] and (t["out"] / "Post-service loop.mp4").is_file()
+
+
+def test_render_now_in_a_service_time_is_used_up_by_an_empty_folder(setup):
+    t = setup
+    config.save(watch=dict(config.watch_settings(), service_times=[{"day": 6, "from": "07:00", "to": "15:00"}]))
+    for p in t["src"].iterdir():
+        p.unlink()
+    run(t, 10)
+    loopwatch.request(t["row"]["path"], anyway=True)
+    run(t, 10)
+    Image.new("RGB", (40, 20), "red").save(t["src"] / "1 Late.png")  # a change later in the same service
+    run(t, 120)
+    assert t["render"].calls == [] and loop_state()["state"] == "held"
+
+
+def test_render_now_while_rendering_doesnt_render_twice(setup):
+    t = setup
+    t["render"].instant = False
+    run(t, 35)
+    loopwatch.request(t["row"]["path"])
+    run(t, 5)
+    t["render"].procs[0].done = True
+    run(t, 120)
+    assert len(t["render"].calls) == 1 and t["video"].is_file()
+
+
+def test_one_loop_in_trouble_doesnt_stop_the_others(setup, tmp_path, monkeypatch):
+    t = setup
+    post = tmp_path / "EndServiceLoop"
+    post.mkdir()
+    Image.new("RGB", (40, 20), "navy").save(post / "Farewell.png")
+    config.save(watch=dict(config.watch_settings(), rows=[t["row"], dict(t["row"], path=str(post), name="Post-service loop")]))
+    real = loopwatch.listing
+    monkeypatch.setattr(loopwatch, "listing", lambda folder: (_ for _ in ()).throw(RuntimeError("odd"))
+                        if Path(folder) == t["src"] else real(folder))
+    run(t, 40)
+    assert (t["out"] / "Post-service loop.mp4").is_file()
+
+
+def test_a_render_that_comes_out_short_is_a_failure(setup):
+    t = setup
+    t["render"].came_out = 0.05
+    run(t, 40)
+    assert not t["video"].exists() and loop_state()["state"] == "failed"
+    assert "the video came out shorter than its screens" in t["said"][-1]
+
+
+def test_a_record_loops_json_cant_take_doesnt_render_again_and_again(setup, monkeypatch):
+    t = setup
+    real = config.write_json
+    monkeypatch.setattr(config, "write_json", lambda path, data: (_ for _ in ()).throw(OSError(28, "disk full"))
+                        if Path(path).name == "loops.json" else real(path, data))
+    run(t, 300)
+    assert len(t["render"].calls) == 1
 
 
 def test_loops_take_turns(setup, tmp_path):

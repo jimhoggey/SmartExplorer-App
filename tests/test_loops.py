@@ -86,6 +86,57 @@ def test_videos_play_at_full_length_and_a_short_one_is_held_to_two_seconds(tmp_p
     assert b.length == pytest.approx(3.0, abs=0.1)
 
 
+def test_a_one_frame_video_is_shown_like_a_picture(tmp_path):
+    one = tmp_path / "flash.mp4"
+    subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                    "testsrc=size=320x180:rate=25:duration=0.04", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(one)],
+                   check=True)
+    (c,), left_out = loops.plan([one], loops.fresh(tmp_path / "work"))
+    assert left_out == [] and (c.kind, c.length) == ("still", loops.STILL)
+    assert Image.open(c.source).size == (320, 180)
+
+
+def test_a_work_folder_that_cant_be_emptied_is_refused(tmp_path, monkeypatch):
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "render.mp4").write_bytes(b"still being written")
+    monkeypatch.setattr(loops.shutil, "rmtree", lambda path, ignore_errors=False: None)  # as a locked file stays
+    with pytest.raises(OSError, match="still in use"):
+        loops.fresh(work)
+
+
+def test_a_staged_copy_that_cant_be_deleted_is_left(tmp_path, monkeypatch):
+    (tmp_path / "Loop.mp4.part").write_bytes(b"x")
+
+    def locked(self, missing_ok=False):
+        raise PermissionError(32, "in use")
+
+    monkeypatch.setattr(loops.Path, "unlink", locked)
+    loops.clear_stage(tmp_path, "Loop")  # no error
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the job that kills ffmpeg is Windows only")
+def test_ffmpeg_dies_with_the_process_that_started_it(tmp_path):
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import sys, time\nsys.path.insert(0, %r)\nimport loops\n"
+        "p = loops.start([loops.imageio_ffmpeg.get_ffmpeg_exe(), '-f', 'lavfi', '-i', 'testsrc=duration=600', "
+        "'-f', 'null', '-'], %r)\nprint(p.pid, flush=True)\ntime.sleep(600)\n"
+        % (str(Path(loops.__file__).parent), str(tmp_path)))
+    parent = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE, text=True)
+    pid = int(parent.stdout.readline())
+    parent.kill()  # as taskkill /F does
+    parent.wait()
+    import time
+    for _ in range(50):
+        alive = str(pid) in subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True,
+                                            text=True).stdout
+        if not alive:
+            break
+        time.sleep(0.2)
+    assert not alive, "ffmpeg kept running after the process that started it was killed"
+
+
 def test_a_file_that_cant_be_read_is_left_out_and_the_rest_kept(tmp_path):
     good = tmp_path / "1.png"
     Image.new("RGB", (100, 100)).save(good)

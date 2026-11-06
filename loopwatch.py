@@ -135,8 +135,9 @@ class Loop:
         self.left_out, self.total, self.started = [], 0.0, 0.0
         self.staged, self.refused_since, self.next_swap = False, None, 0.0
         self.fails, self.next_try, self.failed_files, self.error = 0, 0.0, None, None
-        self.forced = self.anyway = False  # Render now; anyway: during a service time
-        self.unavailable_since = None
+        self.forced = False  # Render now
+        self.anyway_until = 0.0  # Render now confirmed in a service time: until that one ends, or it is swapped in
+        self.unavailable_since = self.output_missing_since = None
         self.state, self.text, self.bar, self.progress = "none", "Not rendered yet", "", 0.0
         self.use(row)
 
@@ -157,23 +158,36 @@ class Loops:
         self.say, self.log, self.render = say, log, render or _render
         self.loops = {}  # folder key -> Loop, in the table's order
         self.said = set()  # "kind|key": each problem said once, and again only after it cleared
+        self.unsaved = {}  # records loops.json couldn't take: without them each look would render again
 
     def tick(self, s, now, ready_at, renaming):
         """ready_at: when the start-up wait ends. renaming(path): whether renaming still has
         new files there. Returns (rank, text) for the status bar: 3 a problem, 2 work,
         1 all good, 0 no loops."""
         self._sync(s["loops"], now)
+        until = config.service_until(s["service_times"], now)
         for a in _take_requests():
             l = self.loops.get(config.folder_key(a["path"]))
-            if l:
-                l.forced, l.anyway = True, l.anyway or a.get("anyway") is True
-                self.log("Render now: %s%s" % (l.name, " (in a service time)" if l.anyway else ""))
-        recs = records()
-        until = config.service_until(s["service_times"], now)
-        for l in self.loops.values():
+            if not l:
+                continue
+            if a.get("anyway") is True and until:
+                l.anyway_until = until
+            if not (l.proc or l.staged):  # otherwise a new video is on its way already
+                l.forced = True
+            self.log("Render now: %s%s" % (l.name, " (in a service time)" if l.anyway_until > now else ""))
+        recs = dict(records(), **self.unsaved)
+        for l in list(self.loops.values()):
             busy = next((o for o in self.loops.values() if o.proc and o is not l), None)
-            self._look(l, recs, now, until, ready_at, renaming, busy)
+            try:
+                self._look(l, recs, now, until, ready_at, renaming, busy)
+            except Exception as e:  # one loop's trouble (a locked file, say) must not stop the others
+                self.log("Loop error in %s: %r" % (l.name, e))
         return self.note()
+
+    @staticmethod
+    def _held(l, now, until):
+        """In a service time, unless Render now was confirmed for this one."""
+        return bool(until) and now >= l.anyway_until
 
     def _sync(self, rows, now):
         new = {}
@@ -232,6 +246,9 @@ class Loops:
             files = listing(l.path)
         except OSError:
             l.unavailable_since = l.unavailable_since or now
+            if l.proc:  # else it would hold every other loop up, and run on into a service time
+                self._stop(l, "its folder can't be found")
+            l.forced, l.anyway_until = False, 0.0
             if now - l.unavailable_since >= FOLDER_GRACE:
                 self._problem("folder", l)
             return l.show("missing", "Can't find this folder.", "can't find the folder for %s" % l.name)
@@ -254,14 +271,18 @@ class Loops:
                 and config.folder_key(rec.get("output")) == config.folder_key(l.output):
             return l.show("ok", made_text(l.name, rec, now))
         if not os.path.isdir(l.output):
-            self._problem("output", l, output=config.folder_name(l.output))
+            l.output_missing_since = l.output_missing_since or now
+            if now >= ready_at and now - l.output_missing_since >= FOLDER_GRACE:  # as for the loop folder
+                self._problem("output", l, output=config.folder_name(l.output))
+            l.forced, l.anyway_until = False, 0.0
             return l.show("missing", "Can't find the folder to save to.",
                           "can't save %s into %s" % (l.name, config.folder_name(l.output)))
+        l.output_missing_since = None
         self._clear("output", l)
         if not files:
             if there:
                 self._problem("empty", l)
-            l.forced = False
+            l.forced, l.anyway_until = False, 0.0
             return l.show("empty", "The folder is empty, so the old video was kept." if there
                           else "Nothing to render yet: the folder is empty.", "%s's folder is empty" % l.name)
         self._clear("empty", l)
@@ -280,7 +301,7 @@ class Loops:
             left = math.ceil((ready_at - now) / 60)
             return l.show("changed", "Waiting for Google Drive, %d min left" % left,
                           "Waiting for Google Drive, %d min left" % left)
-        if until and not l.anyway:
+        if self._held(l, now, until):
             return l.show("held", "Will render after the service, at %s." % _clock(until),
                           "%s will be updated after the service, at %s" % (l.name, _clock(until)))
         if busy:
@@ -311,7 +332,7 @@ class Loops:
     def _poll(self, l, recs, now, until):
         code = l.proc.poll()
         if code is None:
-            if until and not l.anyway:
+            if self._held(l, now, until):
                 self._stop(l, "a service time started")
                 return l.show("held", "Will render after the service, at %s." % _clock(until),
                               "%s will be updated after the service, at %s" % (l.name, _clock(until)))
@@ -325,6 +346,9 @@ class Loops:
             tail = loops.tail(l.work)
             self.log("ffmpeg stopped (%s) rendering %s:\n%s" % (code, l.name, tail))
             return self._failed(l, now, l.made_from, _why(tail))
+        if loops.progress(l.work, l.total) < 0.9:  # ffmpeg can finish "fine" with next to nothing written
+            self.log("%s came out short:\n%s" % (l.name, loops.tail(l.work)))
+            return self._failed(l, now, l.made_from, "the video came out shorter than its screens")
         try:
             loops.stage(l.work / "render.mp4", l.output, l.name)
         except OSError as e:
@@ -335,7 +359,7 @@ class Loops:
 
     def _swap(self, l, recs, now, until):
         video = "%s.mp4" % l.name
-        if until and not l.anyway:
+        if self._held(l, now, until):
             return l.show("held", "New video ready: it goes in after the service, at %s." % _clock(until),
                           "%s will be updated after the service, at %s" % (l.name, _clock(until)))
         waiting = ("staged", "New video ready: waiting for ProPresenter to let go of the old one",
@@ -364,9 +388,12 @@ class Loops:
         recs[l.key] = rec
         try:
             config.write_json(state_path(), recs)
+            self.unsaved.pop(l.key, None)
         except OSError as e:
+            self.unsaved[l.key] = rec
             self.log("Could not record %s: %s" % (l.name, e))
-        l.fails, l.next_try, l.failed_files, l.error, l.anyway = 0, 0.0, None, None, False
+        l.fails, l.next_try, l.failed_files, l.error = 0, 0.0, None, None
+        l.forced, l.anyway_until = False, 0.0
         shutil.rmtree(l.work, ignore_errors=True)
         self.log("Swapped in %s in %s" % (video, l.output))
         self.say(SAY["updated"].format(name=l.name, screens=_plural(rec["screens"], "screen"),
@@ -382,7 +409,7 @@ class Loops:
         l.fails += 1
         wait = RETRY[min(l.fails, len(RETRY)) - 1]
         l.next_try, l.failed_files, l.error = now + wait, files, why
-        l.forced = l.anyway = False
+        l.forced, l.anyway_until = False, 0.0
         self.log("Couldn't update %s: %s" % (l.name, why))
         if l.fails == 1:  # said once; the row and the status bar keep showing it
             self.say(SAY["failed"].format(name=l.name, why=why, when=_plural(wait // 60, "minute")))

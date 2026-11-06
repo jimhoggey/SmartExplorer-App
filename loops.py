@@ -6,6 +6,7 @@ A render is planned (each screen read; pictures prepared in a work folder), run 
 the bundled ffmpeg as a child process at low priority, then staged next to the old
 video under a name ProPresenter doesn't import and swapped over it in one step.
 """
+import errno
 import os
 import re
 import shutil
@@ -25,6 +26,7 @@ W, H, FPS = 1920, 1080, 30
 STILL = 10  # seconds a picture shows, and the least an animated picture fills
 FADE = 1  # seconds of each crossfade
 MIN_CLIP = 2  # a shorter video is held on its last frame to this: its two crossfades must not overlap
+SHORTEST = 0.25  # seconds: a video shorter than this (a frame or two) is shown as a picture of its first frame
 FRAME_DEFAULT = 0.1  # seconds for an animation frame that says 0 or 10 ms, as browsers show them
 ANIMATED = {"GIF", "WEBP", "PNG"}  # formats whose frames are an animation (a multi-page TIFF is not)
 FIT = ("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,"
@@ -47,10 +49,13 @@ def screens(folder):
 
 
 def fresh(work):
-    """An empty work folder."""
+    """An empty work folder. Raises OSError when an earlier render's files can't be
+    deleted (still in use): rendering over them could stage a mix of the two."""
     work = Path(work)
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True, exist_ok=True)
+    if any(work.iterdir()):
+        raise OSError(errno.EBUSY, "an earlier render's files are still in use", str(work))
     return work
 
 
@@ -63,7 +68,11 @@ def plan(paths, work, still=STILL):
         path = Path(path)
         try:
             if scanner.kind(path) == "video":
-                clips.append(Clip(path, "video", max(video_length(path), MIN_CLIP), path))
+                secs = video_length(path)
+                if secs < SHORTEST:  # ffmpeg's fps filter drops a lone frame: it would come out empty
+                    clips.append(_first_frame(path, Path(work) / ("%03d" % i), still))
+                else:
+                    clips.append(Clip(path, "video", max(secs, MIN_CLIP), path))
             else:
                 clips.append(_picture(path, Path(work) / ("%03d" % i), still))
         except Exception as e:
@@ -84,6 +93,21 @@ def video_length(path):
     if secs <= 0:
         raise ValueError("no picture in it")
     return float(secs)
+
+
+def _first_frame(path, stem, still):
+    """A video of a frame or two, shown like a picture."""
+    gen = imageio_ffmpeg.read_frames(str(path))
+    try:
+        meta = next(gen)
+        frame = next(gen, None)
+    finally:
+        gen.close()
+    if frame is None:
+        raise ValueError("no picture in it")
+    out = stem.with_suffix(".png")
+    _fit(Image.frombytes("RGB", meta["size"], frame)).save(out)
+    return Clip(path, "still", still, out)
 
 
 def _fit(img):
@@ -179,14 +203,56 @@ def command(clips, out, work):
 
 def start(argv, work):
     """Run ffmpeg as a child process at low priority (ProPresenter comes first), with its
-    messages in work/ffmpeg.log. Returns the Popen."""
+    messages in work/ffmpeg.log. Returns the Popen. On Windows it dies with this process."""
     kw = {}
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW
     else:
         kw["preexec_fn"] = lambda: os.nice(10)
     with open(Path(work) / "ffmpeg.log", "wb") as log:
-        return subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log, **kw)
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log, **kw)
+    if sys.platform == "win32":
+        _die_with_us(proc)
+    return proc
+
+
+_JOB = []  # Windows: the job ffmpeg runs in, open for as long as this process lives
+
+
+def _die_with_us(proc):
+    """Put ffmpeg in a job that Windows closes, killing it, when this process ends however
+    it ends: the installer's taskkill /F, say. Else it would render on into a service
+    time and hold files an update replaces. Never stops a render if it can't."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+        k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        if not _JOB:
+            class Basic(ctypes.Structure):
+                _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                            ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                            ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                            ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                            ("SchedulingClass", wintypes.DWORD)]
+
+            class Extended(ctypes.Structure):
+                _fields_ = [("BasicLimitInformation", Basic), ("IoInfo", ctypes.c_uint64 * 6),
+                            ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                            ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+            job = k32.CreateJobObjectW(None, None)
+            info = Extended()
+            info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            if not job or not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+                return  # 9: JobObjectExtendedLimitInformation
+            _JOB.append(job)
+        k32.AssignProcessToJobObject(_JOB[0], int(proc._handle))
+    except Exception:
+        pass
 
 
 def progress(work, total):
@@ -232,8 +298,10 @@ def put(folder, name):
 
 
 def clear_stage(folder, name):
-    """Delete a staged copy left by a crash, a switch-off or a swap given up on."""
+    """Delete a staged copy left by a crash, a switch-off or a swap given up on. One that
+    can't be deleted (Google Drive or a virus checker has it open) is left; staging over
+    it then fails, and that render is tried again later."""
     try:
         part_path(folder, name).unlink()
-    except FileNotFoundError:
+    except OSError:
         pass

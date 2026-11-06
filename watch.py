@@ -457,7 +457,10 @@ class Watcher:
         self._status("stopped", "Background renaming stopped")
 
     def _renaming(self, path):
-        """Whether renaming still has new files in this folder: a loop renders after them."""
+        """Whether renaming still has new files in this folder: a loop renders after them.
+        Not while renaming is paused (no key, no credit, the limit), which can last days."""
+        if self.problems & {"nokey", "limit", "connection", "key", "credit"}:
+            return False
         fw = self.folders.get(known.key(path))
         now = self.clock()
         return bool(fw) and any(not fw.waiting(fw.id(p), now) for p in fw.seen)
