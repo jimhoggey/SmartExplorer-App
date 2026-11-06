@@ -118,7 +118,7 @@ def test_one_screen_is_just_that_screen(tmp_path):
 def test_the_command_has_no_sound_and_keeps_the_graph_in_a_file(tmp_path):
     argv = loops.command([clip(10), clip(10)], tmp_path / "out.mp4", tmp_path)
     assert "-an" in argv and "libx264" in argv
-    assert argv[argv.index("-filter_complex_script") + 1] == str(tmp_path / "graph.txt")
+    assert argv[argv.index("-/filter_complex") + 1] == str(tmp_path / "graph.txt")
     assert (tmp_path / "graph.txt").read_text("utf-8").count("xfade") == 2
 
 

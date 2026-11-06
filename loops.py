@@ -161,14 +161,15 @@ def _input(c):
 
 def command(clips, out, work):
     """ffmpeg's argv to render the clips into `out`: H.264, 1920×1080, 30 fps, no sound.
-    The graph goes in a file, as a long loop's command line would pass Windows' limit."""
+    The graph goes in a file, as a long loop's command line would pass Windows' limit
+    (`-/filter_complex FILE`: ffmpeg 7 and later; 8 dropped -filter_complex_script)."""
     work = Path(work)
     text, label = graph(clips)
     (work / "graph.txt").write_text(text, "utf-8")
     argv = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-nostdin", "-y"]
     for c in clips:
         argv += _input(c)
-    return argv + ["-filter_complex_script", str(work / "graph.txt"), "-map", label, "-an",
+    return argv + ["-/filter_complex", str(work / "graph.txt"), "-map", label, "-an",
                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", str(FPS),
                    "-movflags", "+faststart", "-progress", str(work / "progress.txt"), "-nostats", str(out)]
 
