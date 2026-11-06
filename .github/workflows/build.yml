@@ -64,6 +64,8 @@ jobs:
         run: python scripts/smoke_watch.py "dist/Smart Explorer.app/Contents/MacOS/Smart Explorer"
       - name: Smoke test loop videos (--loop-test renders and swaps in a video)
         run: python scripts/smoke_loop_test.py "dist/Smart Explorer.app/Contents/MacOS/Smart Explorer"
+      - name: Smoke test loop videos in the background (--watch renders a loop folder, and again after a change)
+        run: python scripts/smoke_loops.py "dist/Smart Explorer.app/Contents/MacOS/Smart Explorer"
       - name: Build the .dmg (drag Smart Explorer to Applications)
         run: |
           DMG="SmartExplorer-$VERSION-mac-${{ matrix.arch }}.dmg"
@@ -143,6 +145,9 @@ jobs:
       - name: Smoke test loop videos (--loop-test renders and swaps in a video; refused while it is open)
         shell: bash
         run: python scripts/smoke_loop_test.py "dist/Smart Explorer/Smart Explorer.exe"
+      - name: Smoke test loop videos in the background (renders, renders again, waits while the video is open)
+        shell: bash
+        run: python scripts/smoke_loops.py "dist/Smart Explorer/Smart Explorer.exe"
       - name: Check "Start by itself when the computer starts" really starts it (Startup shortcut, as at sign-in)
         shell: bash
         run: python scripts/smoke_windows_startup.py "dist/Smart Explorer/Smart Explorer.exe"
