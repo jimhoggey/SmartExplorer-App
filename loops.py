@@ -17,6 +17,7 @@ from pathlib import Path
 import imageio_ffmpeg
 from PIL import Image, ImageOps, ImageSequence
 
+import known
 import prep  # also teaches Pillow to open HEIC
 import scanner
 
@@ -39,8 +40,10 @@ class Clip:
 
 
 def screens(folder):
-    """The pictures and videos in a folder (not its subfolders), in File Explorer's order."""
-    return [Path(it["path"]) for it in scanner.scan(folder) if it["kind"] in ("image", "video")]
+    """The pictures and videos in a folder (not its subfolders, hidden files or Office and
+    Google Drive temporary files), in File Explorer's order. Raises OSError when the
+    folder is missing or can't be listed: that is not an empty folder."""
+    return [p for p in known.visible(folder) if scanner.kind(p) in ("image", "video")]
 
 
 def fresh(work):
