@@ -370,6 +370,9 @@ def api_watch_preview():
         if r["render"]:
             videos[folder] = {"screens": sum(scanner.kind(p) in ("image", "video") for p in files),
                               "exists": bool(r["output"]) and loops.video_path(r["output"], r["name"]).is_file()}
+    bad = _row_error(rows, True)  # Save's checks first, so the confirm never comes before an error
+    if bad:
+        return jsonify(error=bad[0], folder=bad[1]), 400
     return jsonify(counts=counts, loops=videos)
 
 

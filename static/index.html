@@ -113,13 +113,20 @@
       <button type="button" id="editPrompts">View and edit</button>
     </div>
     <fieldset class="watch">
-      <legend>Watch folders</legend>
-      <label class="check"><input id="wOn" type="checkbox"><span>Rename new files in these folders by itself, with no window open</span></label>
+      <legend>Folders</legend>
+      <label class="check"><input id="wOn" type="checkbox"><span>Watch these folders by itself, with no window open</span></label>
       <div id="wFields" hidden>
-        <div class="wfield">Folders <small>The Google Drive folders ProPresenter's smart playlists watch. Files already in a folder are left as they are.</small>
+        <div class="wfield">Folders <small>Rename new files: names what arrives in a Google Drive folder; files already there are
+            left as they are. Render into video: turns a loop folder's pictures and videos into one video, saved where
+            ProPresenter's smart playlist looks.</small>
           <ul id="wList" class="wlist" aria-label="Watched folders"></ul>
           <span class="keyrow"><input id="wFolder" type="text" spellcheck="false" placeholder="Paste a folder's path, or Choose" aria-label="Folder to add">
             <button type="button" id="wPick">Choose</button><button type="button" id="wAdd">Add</button></span>
+        </div>
+        <div class="wfield">Service times <small>No video is rendered or swapped during these, so the loop never changes
+            while you're live.</small>
+          <ul id="wTimes" class="wlist wtimes" aria-label="Service times"></ul>
+          <button type="button" id="wAddTime" class="link">Add time</button>
         </div>
         <div class="pair">
           <label>Naming style <select id="wProfile"></select></label>

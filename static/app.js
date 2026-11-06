@@ -4,7 +4,8 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
   "checkUpdates", "updateMsg", "watchbar", "watchText", "watchRetry", "watchStart", "wOn", "wFields", "wList", "wFolder", "wPick", "wAdd", "wProfile",
-  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wShowStartup", "wWaitRow", "wStatus", "wLog"]
+  "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wShowStartup", "wWaitRow", "wStatus", "wLog",
+  "wTimes", "wAddTime"]
   .reduce((o, k) => (o[k] = $(k), o), {});
 // sources: what the user loaded (folders and/or files); items: the files found in them.
 let sources = [], items = [], status = { models: [], profiles: [] }, journal = null, toastTimer = null, profile = "propresenter";
@@ -621,7 +622,10 @@ function showWatch(w) {
   els.watchStart.hidden = !on || !down;
   els.watchRetry.hidden = !on || !w.running || !((w.status || {}).stuck > 0);  // files named but in use
   els.wStatus.textContent = on ? watchLine(w) : "";
-  if (watchFilled) showAutostart();  // what the start-up note says follows what is really there
+  if (watchFilled) {
+    showAutostart();  // what the start-up note says follows what is really there
+    showLines();  // and each loop's line what the background copy is doing
+  }
   clearTimeout(watchTimer);
   if (on) watchTimer = setTimeout(refreshWatch, 5000);
 }
@@ -636,9 +640,11 @@ function fillWatch() {
   if (!w) return;
   const s = w.settings;
   els.wOn.checked = s.enabled;
-  watchFolders = [...s.folders];
+  watchRows = s.rows.map((r) => ({ ...r }));
+  watchTimes = s.service_times.map((t) => ({ ...t }));
   els.wFolder.value = "";
   renderFolders();
+  renderTimes();
   els.wProfile.innerHTML = "";
   for (const p of status.profiles) els.wProfile.add(new Option(p.label, p.id));
   els.wProfile.value = s.profile;
@@ -672,39 +678,129 @@ function showAutostart() {
   els.wWaitRow.hidden = !ticked;
 }
 
-// The watched folders while Settings is open; saved with Save.
-let watchFolders = [];
+// The Folders table and service times while Settings is open; saved with Save.
+let watchRows = [], watchTimes = [];
 const MAX_FOLDERS = 10;
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];  // as Python numbers them
 // A pasted path tidied: Windows' "Copy as path" puts quotes round it.
 const cleanFolder = (p) => (p || "").trim().replace(/^"+|"+$/g, "").trim();
 // One folder, one key, however it is written (as config.folder_key): G:/x, g:\x\ …
 const folderKey = (p) => cleanFolder(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 const folderName = (p) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 
+const make = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+};
+const linkButton = (text, onclick) => {
+  const b = make("button", "link", text);
+  b.type = "button";
+  b.onclick = onclick;
+  return b;
+};
+
+// One row of the Folders table: its name (the video's name when it renders), its
+// folder, what Smart Explorer does with it and, for a loop, where its video goes.
+function folderRow(row, i, bad) {
+  const li = make("li", "wrow"), top = make("div", "wtop"), name = make("input", "wname");
+  name.type = "text";
+  name.value = row.name;
+  name.spellcheck = false;
+  name.setAttribute("aria-label", "Name for " + folderName(row.path));
+  name.oninput = () => { row.name = name.value; li.classList.remove("bad"); showLines(); };
+  const remove = linkButton("Remove", () => { watchRows.splice(i, 1); renderFolders(); });
+  remove.setAttribute("aria-label", "Stop watching " + folderName(row.path));
+  top.append(name, remove);
+  const path = make("small", "wpath", row.path), ticks = make("div", "wticks"), out = make("div", "wout");
+  path.title = row.path;
+  const tick = (label, key, after) => {
+    const l = make("label", "wtick"), box = make("input");
+    box.type = "checkbox";
+    box.checked = row[key];
+    box.onchange = () => { row[key] = box.checked; li.classList.remove("bad"); if (after) after(); };
+    l.append(box, make("span", "", label));
+    return l;
+  };
+  ticks.append(tick("Rename new files", "rename"),
+    tick("Render into video", "render", () => { out.hidden = !row.render; showLines(); }));
+  out.hidden = !row.render;
+  const dest = make("input"), choose = make("button", "", "Choose");
+  dest.type = "text";
+  dest.value = row.output;
+  dest.spellcheck = false;
+  dest.placeholder = "The folder ProPresenter's smart playlist watches";
+  dest.setAttribute("aria-label", "Save the video to");
+  dest.oninput = () => { row.output = dest.value; li.classList.remove("bad"); showLines(); };
+  choose.type = "button";
+  choose.onclick = inDialog(els.keymsg, async () => {
+    const { folder } = await api("pick-folder");
+    if (folder) { dest.value = row.output = folder; li.classList.remove("bad"); showLines(); }
+  });
+  const where = make("div", "wdest", "Save video to"), keyrow = make("span", "keyrow");
+  keyrow.append(dest, choose);
+  where.append(keyrow);
+  const line = make("p", "wline");
+  line.append(make("span"), " ", linkButton("Render now", inDialog(els.keymsg, () => renderNow(row))));
+  out.append(where, line);
+  li.append(top, path, ticks, out);
+  li.classList.toggle("bad", !!bad && folderKey(bad) === folderKey(row.path));
+  return li;
+}
+
 function renderFolders(bad) {
   els.wList.innerHTML = "";
-  if (!watchFolders.length) {
-    const li = document.createElement("li");
-    li.className = "none";
-    li.textContent = "No folders yet: paste a path or click Choose, then Add.";
-    els.wList.appendChild(li);
+  if (!watchRows.length) els.wList.appendChild(make("li", "none", "No folders yet: paste a path or click Choose, then Add."));
+  watchRows.forEach((row, i) => els.wList.appendChild(folderRow(row, i, bad)));
+  showLines();
+}
+
+// Each loop's line: its video, or what the background copy is doing with it. Only a
+// loop saved as it is now has one, and Render now only while watching is on.
+function showLines() {
+  const w = watchState || {}, s = w.settings || {}, lines = w.loops || {};
+  [...els.wList.querySelectorAll(".wrow")].forEach((li, i) => {
+    const row = watchRows[i], p = li.querySelector(".wline");
+    if (!row || !p) return;
+    const saved = (s.loops || []).find((r) => folderKey(r.path) === folderKey(row.path));
+    const same = !!saved && saved.name === row.name.trim() && folderKey(saved.output) === folderKey(row.output);
+    const line = same ? lines[folderKey(row.path)] : null;
+    p.firstChild.textContent = !row.render ? "" : line ? line.text : "Rendered once you click Save.";
+    p.classList.toggle("err", !!line && ["failed", "missing"].includes(line.state));
+    p.querySelector("button").hidden = !(line && s.enabled && line.state !== "rendering");
+  });
+}
+
+async function renderNow(row) {
+  const until = (watchState || {}).service_until;
+  let anyway = false;
+  if (until) {
+    if (!confirm(`It's a service time until ${until}. Render ${row.name} now anyway? The new video goes in as soon as it's ready.`)) return;
+    anyway = true;
   }
-  watchFolders.forEach((path, i) => {
-    const li = document.createElement("li"), label = document.createElement("span"), full = document.createElement("small");
-    const remove = document.createElement("button");
-    label.className = "path";
-    label.textContent = folderName(path);
-    full.textContent = path;
-    full.title = path;
-    label.appendChild(full);
-    remove.type = "button";
-    remove.className = "link";
-    remove.textContent = "Remove";
-    remove.setAttribute("aria-label", "Stop watching " + folderName(path));
-    remove.onclick = () => { watchFolders.splice(i, 1); renderFolders(); };
-    li.classList.toggle("bad", !!bad && folderKey(bad) === folderKey(path));
-    li.append(label, remove);
-    els.wList.appendChild(li);
+  showWatch(await api("loops/render", { path: row.path, anyway }));
+  say(els.keymsg, `${row.name} renders in a few seconds.`);
+}
+
+function renderTimes(bad) {
+  els.wTimes.innerHTML = "";
+  if (!watchTimes.length) els.wTimes.appendChild(make("li", "none", "No service times: loop videos are updated whenever their screens change."));
+  watchTimes.forEach((t, i) => {
+    const li = make("li", "wtime"), day = make("select"), from = make("input"), to = make("input");
+    DAYS.forEach((d, n) => day.add(new Option(d, String(n))));
+    day.value = String(t.day);
+    day.setAttribute("aria-label", "Day");
+    day.onchange = () => (t.day = Number(day.value));
+    for (const [box, key, label] of [[from, "from", "From"], [to, "to", "To"]]) {
+      box.type = "time";
+      box.value = t[key];
+      box.setAttribute("aria-label", label);
+      box.onchange = () => { t[key] = box.value; li.classList.remove("bad"); };
+    }
+    li.append(day, from, make("span", "", "to"), to, linkButton("Remove", () => { watchTimes.splice(i, 1); renderTimes(); }));
+    li.classList.toggle("bad", i === bad);
+    els.wTimes.appendChild(li);
   });
 }
 
@@ -713,17 +809,21 @@ function addFolder(path = els.wFolder.value) {
   path = cleanFolder(path);
   els.wFolder.classList.remove("bad");
   if (!path) return "Paste a folder's path or click Choose first.";
-  if (watchFolders.some((p) => folderKey(p) === folderKey(path))) { els.wFolder.value = ""; return ""; }
-  if (watchFolders.length >= MAX_FOLDERS) return `Smart Explorer can watch up to ${MAX_FOLDERS} folders.`;
-  watchFolders.push(path);
+  if (watchRows.some((r) => folderKey(r.path) === folderKey(path))) { els.wFolder.value = ""; return ""; }
+  if (watchRows.length >= MAX_FOLDERS) return `Smart Explorer can watch up to ${MAX_FOLDERS} folders.`;
+  watchRows.push({ path, name: folderName(path), rename: true, render: false, output: "" });
   els.wFolder.value = "";
   renderFolders();
   return "";
 }
 
 function watchDraft() {
-  return {
-    enabled: els.wOn.checked, folders: [...watchFolders], profile: els.wProfile.value,
+  return {  // rows as the server tidies them, so an unchanged table compares equal
+    enabled: els.wOn.checked,
+    rows: watchRows.map((r) => ({ path: r.path, name: r.name.trim() || folderName(r.path), rename: r.rename,
+      render: r.render, output: cleanFolder(r.output) })),
+    service_times: watchTimes.map((t) => ({ day: t.day, from: t.from, to: t.to })),
+    profile: els.wProfile.value,
     startup_wait_min: Math.round(Number(els.wWait.value) || 0), monthly_limit_usd: Number(els.wLimit.value) || 0,
     autostart: els.wAuto.checked,
   };
@@ -755,17 +855,34 @@ async function saveWatch() {
     else { els.wFolder.classList.add("bad"); els.wFolder.focus(); }
     return new Error(msg + " Nothing was saved yet.");
   };
-  if (d.enabled && !d.folders.length) throw bad(null, "Add a folder to watch first.");
+  if (d.enabled && !d.rows.length) throw bad(null, "Add a folder to watch first.");
+  const wrong = d.service_times.findIndex((t) => !t.from || !t.to || t.from >= t.to);
+  if (wrong >= 0) {
+    renderTimes(wrong);
+    throw new Error("A service time must end after it starts. Nothing was saved yet.");
+  }
   const watched = new Set(s.enabled ? s.folders.map(folderKey) : []);
-  const added = d.enabled ? d.folders.filter((f) => !watched.has(folderKey(f))) : [];
-  if (added.length) {
-    let counts;  // every folder is checked first, so the confirm never comes before a "can't find" error
-    try { ({ counts } = await api("watch/preview", { folders: d.folders })); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
-    const named = d.folders.length > 1;
-    const lines = added.map((f) => leftAlone(f, counts[f] || 0, named)).filter(Boolean);
-    const msg = `Smart Explorer will rename new files in ${named ? "these folders" : "this folder"} by itself, even with this window closed.`
-      + (lines.length ? "\n\n" + lines.join("\n") : "");
-    if (!confirm(msg)) return false;
+  const added = d.enabled ? d.rows.filter((r) => r.rename && !watched.has(folderKey(r.path))) : [];
+  const before = new Map((s.enabled ? s.loops : []).map((r) => [folderKey(r.path), r]));
+  const newLoops = d.enabled ? d.rows.filter((r) => {
+    const o = before.get(folderKey(r.path));
+    return r.render && !(o && o.name === r.name && folderKey(o.output) === folderKey(r.output));
+  }) : [];
+  if (added.length || newLoops.length) {
+    let counts, videos;  // every folder is checked first, so the confirm never comes before a "can't find" error
+    try { ({ counts, loops: videos } = await api("watch/preview", { rows: d.rows })); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
+    const named = d.rows.filter((r) => r.rename).length > 1 || newLoops.length > 0, jobs = [];
+    const lines = added.map((r) => leftAlone(r.path, counts[r.path] || 0, named)).filter(Boolean);
+    for (const r of newLoops) {
+      const v = videos[r.path] || { screens: 0 };
+      lines.push(v.screens ? `${r.name}: ${plural(v.screens, "screen")} will become ${r.name}.mp4 in ${folderName(r.output)}.`
+        + (v.exists ? " It replaces the one already there." : "") : `${r.name}: its folder is empty, so there's nothing to render yet.`);
+    }
+    if (added.length) jobs.push(`rename new files in ${added.length > 1 ? "these folders" : added.length === d.rows.length ? "this folder" : folderName(added[0].path)}`);
+    if (newLoops.length) jobs.push(`keep ${newLoops.length > 1 ? "these loop videos" : "this loop video"} up to date`);
+    const head = `Smart Explorer will ${jobs.join(" and ")} by itself, even with this window closed.`
+      + (newLoops.length && d.service_times.length ? " Videos never change during service times." : "");
+    if (!confirm(head + (lines.length ? "\n\n" + lines.join("\n") : ""))) return false;
   }
   let w;
   try { w = await api("watch", d); } catch (e) { throw bad(e.data && e.data.folder, e.message); }
@@ -869,6 +986,10 @@ els.wPick.onclick = inDialog(els.keymsg, async () => {
   if (folder) { els.wFolder.value = folder; addFromBox(); }
 });
 els.wLog.onclick = inDialog(els.keymsg, () => api("watch/log", {}));
+els.wAddTime.onclick = () => {
+  watchTimes.push({ day: 6, from: "08:00", to: "12:00" });
+  renderTimes();
+};
 els.watchStart.onclick = guarded(async () => showWatch(await api("watch/start", {})));
 els.watchRetry.onclick = guarded(async () => {
   showWatch(await api("watch/retry", {}));
