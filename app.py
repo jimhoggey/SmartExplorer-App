@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -14,6 +15,8 @@ import autostart
 import config
 import conventions
 import known
+import loops
+import loopwatch
 import namer
 import prep
 import renamer
@@ -253,11 +256,14 @@ def spawn_watcher():
 
 
 def watch_state():
-    running = watch.running()
-    return {"settings": config.watch_settings(), "running": running, "status": watch.read_status(),
+    running, settings, st = watch.running(), config.watch_settings(), watch.read_status()
+    until = config.service_until(settings["service_times"], time.time())
+    return {"settings": settings, "running": running, "status": st,
             "starting": not running and time.time() - SPAWNED["at"] < STARTING,
             "spent_month": round(watch.spent_month(), 6), "can_autostart": autostart.available(),
-            "autostart_on": autostart.enabled()}  # the start-up entry really exists, not just the setting
+            "autostart_on": autostart.enabled(),  # the start-up entry really exists, not just the setting
+            "loops": loopwatch.lines(settings, st, running),  # each Render into video row's line
+            "service_until": loopwatch._clock(until) if until else None}
 
 
 def _is_folder(f):
@@ -283,56 +289,141 @@ def _paths(value):
     return config.unique_folders(value) if isinstance(value, list) else []
 
 
+def _rows(body):
+    """The Folders table sent by the window, or the folder list of 0.7 (every folder renamed),
+    or None. The count is checked before rows() keeps the first MAX_FOLDERS."""
+    if isinstance(body.get("rows"), list):
+        raw = body["rows"]
+    elif isinstance(body.get("folders"), list):
+        raw = _paths(body["folders"])
+    else:
+        return None
+    if len({config.folder_key(r.get("path") if isinstance(r, dict) else r) for r in raw}) > config.MAX_FOLDERS:
+        raise ValueError("Smart Explorer can watch up to %d folders." % config.MAX_FOLDERS)
+    return config.rows(raw)
+
+
+BAD_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"%s%d" % (p, i) for p in ("COM", "LPT") for i in range(1, 10)}
+
+
+def _inside(path, folder):
+    a, b = config.folder_key(path), config.folder_key(folder)
+    return a == b or a.startswith(b + "/")
+
+
+def _writable(folder):
+    try:
+        with tempfile.NamedTemporaryFile(dir=folder, prefix=".smart-explorer-", suffix=".tmp"):
+            return True
+    except OSError:
+        return False
+
+
+def _row_error(rows, enabled):
+    """(message, the row's folder) for the first row Save must refuse, or None. Where the
+    video goes is only checked on disk when watching is on, as the folders are."""
+    videos = {}
+    for r in rows:
+        name, out = r["name"], r["output"]
+        if not r["rename"] and not r["render"]:
+            return "Tick Rename new files or Render into video for %s, or remove it." % name, r["path"]
+        if not r["render"]:
+            continue
+        if not out:
+            return "Choose where to save %s's video." % name, r["path"]
+        if BAD_NAME.search(name) or name[-1] in ". " or name.split(".")[0].upper() in RESERVED or len(name) > 100:
+            return ('A video can\'t be called "%s". Use letters, numbers, spaces and dashes.' % name), r["path"]
+        if any(_inside(out, o["path"]) for o in rows):
+            return ("Save %s's video outside the folders Smart Explorer watches. It would end up renamed or "
+                    "inside its own loop." % name), r["path"]
+        if enabled and (not _is_folder(out) or not _writable(out)):
+            return ("Can't save into %s. Check the folder is there and can be written to."
+                    % config.folder_name(out)), r["path"]
+        same = videos.setdefault((name.lower(), config.folder_key(out)), r)
+        if same is not r:
+            return ("%s and %s would both save %s.mp4 in %s. Give one another name."
+                    % (config.folder_name(same["path"]), config.folder_name(r["path"]), name,
+                       config.folder_name(out))), r["path"]
+    return None
+
+
 @app.post("/api/watch/preview")
 def api_watch_preview():
-    """How many files each folder holds now: the ones that would be left as they are."""
-    counts = {}
-    for folder in _paths((request.get_json(silent=True) or {}).get("folders")):
+    """What Save would do: how many files each folder holds now (the ones renaming leaves
+    as they are) and, for a loop, how many screens its video would have and whether a
+    video of that name is already there."""
+    try:
+        rows = _rows(request.get_json(silent=True) or {}) or []
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    counts, videos = {}, {}
+    for r in rows:
+        folder = r["path"]
         if not _is_folder(folder):
             return _folder_error(folder)
         try:
-            counts[folder] = len(known.visible(folder))
+            files = known.visible(folder)
         except OSError as e:
             return _folder_error(folder, e)
-    return jsonify(counts=counts)
+        counts[folder] = len(files)
+        if r["render"]:
+            videos[folder] = {"screens": sum(scanner.kind(p) in ("image", "video") for p in files),
+                              "exists": bool(r["output"]) and loops.video_path(r["output"], r["name"]).is_file()}
+    bad = _row_error(rows, True)  # Save's checks first, so the confirm never comes before an error
+    if bad:
+        return jsonify(error=bad[0], folder=bad[1]), 400
+    return jsonify(counts=counts, loops=videos)
 
 
 @app.post("/api/watch")
 def api_watch_save():
-    """Save the Watch folders settings, then start or stop background renaming to
-    match. Turning it on, or adding a folder, records the files already in each newly
-    added folder, which are then left as they are. A folder that can't be found or
-    opened is named in the error, and nothing is saved."""
+    """Save the Folders settings, then start or stop background watching to match.
+    Turning it on, or ticking Rename for a folder, records the files already in it,
+    which are then left as they are. A row Save must refuse (a folder that can't be
+    found or opened, a loop with nowhere to go) is named in the error, with its folder,
+    and nothing is saved."""
     body = request.get_json(silent=True) or {}
     old = config.watch_settings()
     new = dict(old)
     for k in ("enabled", "autostart"):
         if isinstance(body.get(k), bool):
             new[k] = body[k]
-    if isinstance(body.get("folders"), list):
-        new["folders"] = _paths(body["folders"])
+    try:  # whether watching is on or off: never drop folders silently
+        rows = _rows(body)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    if rows is not None:
+        new["rows"] = rows
+    if isinstance(body.get("service_times"), list):
+        new["service_times"] = config.service_times(body["service_times"])
     if body.get("profile") in conventions.PROFILES:
         new["profile"] = body["profile"]
     for k in ("startup_wait_min", "monthly_limit_usd"):
         if isinstance(body.get(k), (int, float)) and not isinstance(body.get(k), bool):
             new[k] = body[k]
-    if len(new["folders"]) > config.MAX_FOLDERS:  # whether watching is on or off: never drop folders silently
-        return jsonify(error="Smart Explorer can watch up to %d folders." % config.MAX_FOLDERS), 400
+    if new["enabled"] and not new["rows"]:
+        return jsonify(error="Add a folder to watch first."), 400
     if new["enabled"]:
-        if not new["folders"]:
-            return jsonify(error="Add a folder to watch first."), 400
-        for folder in new["folders"]:
-            if not _is_folder(folder):
-                return _folder_error(folder)
+        for r in new["rows"]:
+            if not _is_folder(r["path"]):
+                return _folder_error(r["path"])
+    bad = _row_error(new["rows"], new["enabled"])
+    if bad:
+        return jsonify(error=bad[0], folder=bad[1]), 400
+    if new["enabled"]:
         watched = {config.folder_key(f) for f in old["folders"]} if old["enabled"] else set()
-        for folder in new["folders"]:
-            if config.folder_key(folder) not in watched:  # compared as the window compares them
+        for r in new["rows"]:
+            if r["rename"] and config.folder_key(r["path"]) not in watched:  # compared as the window compares them
                 try:
-                    known.record_folder(folder)
+                    known.record_folder(r["path"])
                 except OSError as e:
-                    return _folder_error(folder, e)
+                    return _folder_error(r["path"], e)
+    saved = {k: new[k] for k in ("enabled", "autostart", "profile", "startup_wait_min", "monthly_limit_usd",
+                                 "rows", "service_times")}
+    saved["folders"] = [r["path"] for r in new["rows"] if r["rename"]]  # so 0.7 still renames, if it comes back
     with LOCK:
-        config.save(watch=new)
+        config.save(watch=saved)
     new = config.watch_settings()
     err = None
     if new["enabled"] and new["autostart"] and autostart.available():
@@ -363,6 +454,23 @@ def api_watch_retry():
     """Try again: background renaming renames the files that were in use, with the names
     they were already given (no AI), at its next look."""
     watch.request_retry()
+    return jsonify(watch_state())
+
+
+@app.post("/api/loops/render")
+def api_loops_render():
+    """Render now: the background copy renders this loop at its next look, changed or not;
+    anyway: even in a service time (the window asked first)."""
+    body = request.get_json(silent=True) or {}
+    s = config.watch_settings()
+    path = body.get("path") if isinstance(body.get("path"), str) else ""
+    if not any(config.folder_key(r["path"]) == config.folder_key(path) for r in s["loops"]):
+        return jsonify(error="Save this folder with Render into video ticked first."), 400
+    if not s["enabled"]:
+        return jsonify(error="Turn on watching these folders, and Save, to render."), 409
+    loopwatch.request(path, anyway=body.get("anyway") is True)
+    if not watch.running():
+        spawn_watcher()
     return jsonify(watch_state())
 
 

@@ -344,6 +344,35 @@ dialog input.bad { border-color: var(--err); box-shadow: 0 0 0 3px rgba(217, 45,
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
 .keyrow #wAdd { margin-left: -2px; }
+
+/* The Folders table: one row per folder, a loop's save-to folder and its line under it */
+dialog#settings { width: min(640px, 94vw); }
+.wlist li.wrow { display: grid; gap: 6px; align-items: stretch; padding: 10px 12px; }
+.wrow .wtop { display: flex; align-items: center; gap: 10px; }
+.wrow input.wname { flex: 1; min-width: 0; padding: 5px 8px; font-weight: 600; font-size: 14px; box-shadow: none; }
+.wrow small.wpath { margin: -2px 0 0 1px; }
+.wrow .wticks { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.wrow label.wtick {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 2px 0;
+  font-size: 13px; font-weight: 600; color: var(--ink-2); cursor: pointer;
+}
+.wrow label.wtick input { width: 16px; height: 16px; margin: 0; padding: 0; box-shadow: none; accent-color: var(--accent); }
+.wrow .wout { padding: 8px 0 0 24px; border-top: 1px dashed var(--line); }
+.wrow .wout[hidden] { display: none; }
+.wrow .wdest { font-size: 12.5px; font-weight: 600; color: var(--mute); }
+.wrow .wdest input { padding: 6px 10px; font-family: var(--mono); font-size: 12.5px; font-weight: 400; box-shadow: none; }
+.wrow .wdest button { padding: 6px 12px; }
+.wrow .wline { margin: 6px 0 0; font-size: 12.5px; font-weight: 400; color: var(--mute); }
+.wrow .wline.err { color: var(--err); }
+.wtimes li.wtime { gap: 8px; padding: 6px 10px; font-weight: 400; font-size: 13px; color: var(--mute); }
+.wtimes select, .wtimes input { padding: 5px 8px; font-size: 13px; box-shadow: none; }
+.wtimes select { flex: 1; min-width: 0; }
+.wtimes li.wtime > button.link { margin-left: auto; }
+#wAddTime, .wrow .wline button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
+#wAddTime { font-size: 13px; }
 #updateMsg:empty { display: none; }
 
 /* ---------- update banner ---------- */

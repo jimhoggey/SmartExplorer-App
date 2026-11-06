@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -62,11 +63,13 @@ def save(**kv):
     return data
 
 
-# Background renaming (Settings, Watch folders), saved under "watch". Missing or
-# wrong values fall back to these.
+# Background watching (Settings, Folders), saved under "watch". Missing or wrong values
+# fall back to these. "rows" is the Folders table; "folders" (renamed) and "loops"
+# (rendered into a video) are worked out from it.
 WATCH_DEFAULTS = {"enabled": False, "folders": [], "profile": "propresenter", "startup_wait_min": 3,
-                  "monthly_limit_usd": 5.0, "autostart": False}
+                  "monthly_limit_usd": 5.0, "autostart": False, "rows": [], "loops": [], "service_times": []}
 MAX_FOLDERS = 10
+DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  # time.localtime's tm_wday
 
 
 def _number(v):
@@ -104,10 +107,69 @@ def _folders(saved):
     return unique_folders(raw)[:MAX_FOLDERS]
 
 
+def folder_name(path):
+    """A folder's own name, the last part of its path."""
+    return re.split(r"[\\/]", clean_folder(path).rstrip("\\/"))[-1] or clean_folder(path)
+
+
+def row(raw):
+    """One row of the Folders table, tidied, or None when it has no folder."""
+    if isinstance(raw, str):
+        raw = {"path": raw}
+    if not isinstance(raw, dict) or not clean_folder(raw.get("path")):
+        return None
+    path = clean_folder(raw["path"])
+    name = raw.get("name").strip() if isinstance(raw.get("name"), str) else ""
+    return {"path": path, "name": name or folder_name(path),
+            "rename": raw["rename"] if isinstance(raw.get("rename"), bool) else True,
+            "render": raw["render"] if isinstance(raw.get("render"), bool) else False,
+            "output": clean_folder(raw.get("output"))}
+
+
+def rows(raw):
+    """The Folders table: tidied rows, each folder once, at most MAX_FOLDERS."""
+    out, seen = [], set()
+    for r in map(row, raw if isinstance(raw, list) else []):
+        if r and folder_key(r["path"]) not in seen:
+            seen.add(folder_key(r["path"]))
+            out.append(r)
+    return out[:MAX_FOLDERS]
+
+
+def _minutes(hhmm):
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", hhmm) if isinstance(hhmm, str) else None
+    return int(m.group(1)) * 60 + int(m.group(2)) if m and int(m.group(1)) < 24 and int(m.group(2)) < 60 else None
+
+
+def service_times(raw):
+    """[{"day": 0-6 (Monday 0), "from": "HH:MM", "to": "HH:MM"}], each starting before it
+    ends on the same day; anything else is dropped."""
+    out = []
+    for t in raw if isinstance(raw, list) else []:
+        if not isinstance(t, dict) or t.get("day") not in range(7) or isinstance(t.get("day"), bool):
+            continue
+        a, b = _minutes(t.get("from")), _minutes(t.get("to"))
+        if a is not None and b is not None and a < b:
+            out.append({"day": t["day"], "from": "%02d:%02d" % divmod(a, 60), "to": "%02d:%02d" % divmod(b, 60)})
+    return out
+
+
+def service_until(times, t):
+    """When the service time that moment `t` falls in ends (seconds since the epoch), or None."""
+    lt = time.localtime(t)
+    now = lt.tm_hour * 60 + lt.tm_min
+    for st in times:
+        if st["day"] == lt.tm_wday and _minutes(st["from"]) <= now < _minutes(st["to"]):
+            return t - now * 60 - lt.tm_sec + _minutes(st["to"]) * 60
+    return None
+
+
 def watch_settings():
     saved = load().get("watch")
     saved = saved if isinstance(saved, dict) else {}
-    out = dict(WATCH_DEFAULTS, folders=_folders(saved))
+    table = rows(saved["rows"]) if isinstance(saved.get("rows"), list) else rows(_folders(saved))
+    out = dict(WATCH_DEFAULTS, rows=table, service_times=service_times(saved.get("service_times")),
+               folders=[r["path"] for r in table if r["rename"]], loops=[r for r in table if r["render"]])
     for k in ("enabled", "autostart"):
         if isinstance(saved.get(k), bool):
             out[k] = saved[k]

@@ -302,7 +302,7 @@ def second(tmp_path):
 
 def test_watch_preview_counts_what_would_be_left_alone(client, watcher, folder, second):
     r = client.post("/api/watch/preview", json={"folders": [str(folder), str(second)]}).get_json()
-    assert r == {"counts": {str(folder): 2, str(second): 1}}
+    assert r == {"counts": {str(folder): 2, str(second): 1}, "loops": {}}
     r = client.post("/api/watch/preview", json={"folders": [str(folder), "relative"]})
     assert r.status_code == 400 and r.get_json()["folder"] == "relative"
 

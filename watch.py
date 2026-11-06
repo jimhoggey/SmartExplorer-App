@@ -2,10 +2,11 @@
 every new file in them with the normal naming, with nobody at the computer.
 
 `Smart Explorer --watch` runs it; Windows starts it at sign-in when Settings says so.
-The window sets it up (Settings, Watch folders), shows what it is doing from
-status.json and stops it with the stop file. Design:
-docs/superpowers/specs/2026-10-08-background-renaming-design.md (one folder) and
-docs/superpowers/specs/2026-10-23-multiple-folders-design.md (several).
+The window sets it up (Settings, Folders), shows what it is doing from status.json
+and stops it with the stop file. It also keeps loop videos up to date (loopwatch.py).
+Design: docs/superpowers/specs/2026-10-08-background-renaming-design.md (one folder),
+docs/superpowers/specs/2026-10-23-multiple-folders-design.md (several) and
+docs/superpowers/specs/2026-11-06-loop-builder-design.md (loop videos).
 """
 import json
 import math
@@ -20,6 +21,7 @@ import config
 import conventions
 import drive as gdrive
 import known
+import loopwatch
 import namer
 import notify
 import prep
@@ -325,7 +327,8 @@ class Watcher:
     check, the Drive check and notifications can be passed in, so tests run it without
     waiting or OpenRouter."""
 
-    def __init__(self, clock=time.time, say=None, read=None, name=None, check=None, startup=True, drive=None):
+    def __init__(self, clock=time.time, say=None, read=None, name=None, check=None, startup=True, drive=None,
+                 render=None):
         self.clock = clock
         self.startup = startup  # started with the computer: wait for Google Drive first
         self.drive = drive or gdrive.running  # True, False, or None when it can't tell
@@ -341,6 +344,8 @@ class Watcher:
         self.announced = self.checked = False
         self.last_batch = None
         self.last_key = None  # the folder batched last: the next look starts with the one after it
+        self.loops = loopwatch.Loops(lambda text: self.say(text), log, render)
+        self.loop_note = (0, "")  # (rank, text) the loops add to the status line
 
     @property
     def failures(self):
@@ -370,11 +375,18 @@ class Watcher:
     def tick(self):
         """Look once. Returns False when watching is off, so the watcher should stop."""
         s = config.watch_settings()
-        if not s["enabled"] or not s["folders"]:
+        if not s["enabled"] or not s["rows"]:
+            self.loops.stop_all()
             return self._status("stopped", "Background renaming is off")
         now = self.clock()
         self._sync(now, s["folders"])
         wait = s["startup_wait_min"] * 60 if self.startup else 0
+        try:  # loops first: no AI, so no key, no credit, a long batch or a renaming problem holds them up
+            self.loop_note = self.loops.tick(s, now, self.started + wait, self._renaming)
+        except Exception as e:  # a loop's trouble must not stop renaming
+            log("Loop error: %r" % (e,))
+        if not self.folders:  # only loops: their line is the status
+            return self._status("watching", "")
         if not self.announced:
             self.announced = True
             when = "in %s" % _plural(s["startup_wait_min"], "minute") if wait else "as they arrive"
@@ -441,7 +453,17 @@ class Watcher:
         return self._status("watching", self._watching(troubled))
 
     def mark_stopped(self):
+        self.loops.stop_all()
         self._status("stopped", "Background renaming stopped")
+
+    def _renaming(self, path):
+        """Whether renaming still has new files in this folder: a loop renders after them.
+        Not while renaming is paused (no key, no credit, the limit), which can last days."""
+        if self.problems & {"nokey", "limit", "connection", "key", "credit"}:
+            return False
+        fw = self.folders.get(known.key(path))
+        now = self.clock()
+        return bool(fw) and any(not fw.waiting(fw.id(p), now) for p in fw.seen)
 
     def _check_drive(self, s, now, wait):
         """When folders are in Google Drive, look every DRIVE_EVERY seconds whether Drive
@@ -470,12 +492,22 @@ class Watcher:
         return [e for fw in self.folders.values() for e in fw.stuck.values()]
 
     def _status(self, state, message):
+        # One line for renaming and loops: a problem first, then work, then all good.
+        rank, text = self.loop_note if state != "stopped" else (0, "")
+        own = 3 if state in ("paused", "warning") else 2 if state in ("renaming", "downloading", "waiting") else 1
+        if text and (rank > own or not message):
+            message = text
+            if rank == 3:
+                state = "warning"
+        elif text and rank == own == 1:
+            message += " · " + text
         if state == "watching" and (any(p == "drive" or "|" in p for p in self.problems) or self._stuck()):
             state = "warning"  # watching, but a folder is missing, nothing new can arrive, or a file is stuck
         paths = [str(fw.path) for fw in self.folders.values()]
         data = {"state": state, "message": message, "folder": paths[0] if paths else "", "folders": paths,
                 "heartbeat": time.time(), "last_batch": self.last_batch, "problems": sorted(self.problems),
-                "stuck": len(self._stuck())}  # files named but not renamed yet: the window offers Try again
+                "stuck": len(self._stuck()),  # files named but not renamed yet: the window offers Try again
+                "loops": self.loops.status()}
         try:
             config.write_json(watch_dir() / "status.json", data)
         except OSError:
@@ -831,5 +863,7 @@ def main(sleep=time.sleep, watcher=None, now=False):
                 log("Error: %r" % (e,))
             sleep(POLL)
     finally:
+        if isinstance(getattr(w, "loops", None), loopwatch.Loops):
+            w.loops.stop_all()  # never leave ffmpeg running behind
         release(lock)
     return 0

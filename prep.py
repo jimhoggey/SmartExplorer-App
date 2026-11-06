@@ -29,15 +29,16 @@ def _has_alpha(img):
     return img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
 
 
-def _flatten(img):
+def _flatten(img, background=(128, 128, 128)):
     """RGB for JPEG. Transparent areas go mid-grey: a plain convert turns them
-    black, which hides black text on a transparent lower third or prop."""
+    black, which hides black text on a transparent lower third or prop. (A loop
+    video puts them on black, as ProPresenter shows them.)"""
     if img.mode.startswith("I;16") or img.mode == "I":
         img = img.convert("I").point(lambda v: v / 256).convert("L")  # 16-bit would clip to white
     if not _has_alpha(img):
         return img.convert("RGB")
     img = img.convert("RGBA")
-    return Image.alpha_composite(Image.new("RGBA", img.size, (128, 128, 128, 255)), img).convert("RGB")
+    return Image.alpha_composite(Image.new("RGBA", img.size, background + (255,)), img).convert("RGB")
 
 
 def _jpeg_b64(img, max_side):
