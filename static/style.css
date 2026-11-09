@@ -375,6 +375,52 @@ dialog#settings { width: min(640px, 94vw); }
 #wAddTime { font-size: 13px; }
 #updateMsg:empty { display: none; }
 
+/* ---------- how it works ---------- */
+/* The diagram and its buttons and steps side by side, so a click never moves the diagram
+   out of view. In a narrow window they stack, and a long table scrolls. */
+dialog#how { width: min(1120px, 96vw); }
+#howBody {
+  flex: 1; min-height: min(600px, calc(92vh - 176px)); overflow: hidden;  /* the same height whichever steps show */
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(260px, 30vw, 340px); gap: 24px; align-items: start;
+}
+#howMap, .how-rail { max-height: calc(92vh - 176px); overflow: auto; }  /* each scrolls by itself: steps never move the diagram */
+@media (max-width: 760px) {
+  #howBody { display: block; overflow: auto; }
+  #howMap, .how-rail { max-height: none; overflow: visible; }
+}
+#howMap svg { display: block; width: 100%; }
+#howMap [data-on] { transition: opacity .2s; }
+#howMap .how-dim { opacity: .18; }
+.how-t { font: 600 14px var(--ui); fill: var(--ink); }
+.how-s { font: 400 12px var(--ui); fill: var(--mute); }
+.how-box { fill: var(--surface-2); stroke: var(--line-2); stroke-width: .75; }
+.how-zone, .how-empty { fill: none; stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 4 4; }
+.how-edge { stroke: #667085; stroke-width: 1.5; fill: none; }
+/* Teal stays in its own folder; coral is the video that goes somewhere else. */
+.how-name rect { fill: #e1f5ee; stroke: #0f6e56; stroke-width: .75; }
+.how-name .how-t { fill: #085041; }
+.how-name .how-s { fill: #0f6e56; }
+.how-video rect { fill: #faece7; stroke: #993c1d; stroke-width: .75; }
+.how-video .how-t { fill: #712b13; }
+.how-video .how-s { fill: #993c1d; }
+.how-label { margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--mute); }
+.how-rail .how-label:first-child { margin-top: 0; }
+.how-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.how-row button { flex: 1 1 120px; padding: 8px 10px; font-size: 13px; white-space: normal; }
+.how-stack { flex-direction: column; flex-wrap: nowrap; }
+.how-stack button { flex: none; }
+.how-row button[aria-pressed="true"],
+.how-row button[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+#howOut { font-size: 14px; color: var(--ink-2); }
+#howOut:empty { display: none; }
+#howOut p { margin: 12px 0 0; }
+#howOut ol { margin: 12px 0 0; padding-left: 22px; }
+#howOut li { margin-bottom: 4px; }
+.how-paths { list-style: none; margin: 6px 0 4px; padding: 0; -webkit-user-select: text; user-select: text; }
+.how-paths b { font-weight: 600; }
+.how-paths small { display: block; min-height: 0; margin: 0 0 4px; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.how-actions { margin-top: 14px; }
+
 /* ---------- update banner ---------- */
 .update {
   display: flex; align-items: center; gap: 12px; padding: 8px 24px;

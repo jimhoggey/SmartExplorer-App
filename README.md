@@ -83,6 +83,8 @@ It works while the computer is awake: a sleeping computer renames nothing until 
 
 For the people at the ProPresenter computer: [docs/background-renaming.md](docs/background-renaming.md).
 
+**How it works** (*Settings → Folders → Show me*) draws all of this as one flow from your own table: the office drops files in Google Drive, Smart Explorer names them or makes a video, ProPresenter's smart playlists show them and RunsheetPilot builds the service from them. Its buttons show what the office does and the set-up steps. It changes no settings. Design: [docs/superpowers/specs/2026-11-09-how-it-works-guide-design.md](docs/superpowers/specs/2026-11-09-how-it-works-guide-design.md).
+
 ## Loop videos (pre-service and post-service loops)
 
 ProPresenter imports a new picture with no duration and no next cue, so new screens in a loop don't cycle; a new video imports as Loop. So Smart Explorer turns a loop folder into **one video**, and keeps it up to date by itself. In *Settings → Folders*, tick **Render into video** on the loop folder's row, give the row a name (it becomes the video's name: `Pre-service loop.mp4`) and choose **Save video to**: the folder ProPresenter's smart playlist watches, which must not be one of the watched folders. Runsheet Pilot can find the video by its name, as it never changes.

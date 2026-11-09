@@ -114,6 +114,10 @@
     </div>
     <fieldset class="watch">
       <legend>Folders</legend>
+      <div class="styles">
+        <div><b>How it works</b><small>What Smart Explorer does between Google Drive, ProPresenter and RunsheetPilot, and how to set it up.</small></div>
+        <button type="button" id="howOpen">Show me</button>
+      </div>
       <label class="check"><input id="wOn" type="checkbox"><span>Watch these folders by itself, with no window open</span></label>
       <div id="wFields" hidden>
         <div class="wfield">Folders <small>Rename new files: names what arrives in a Google Drive folder; files already there are
@@ -188,6 +192,28 @@
   </form>
 </dialog>
 
+<dialog id="how" class="wide" aria-labelledby="how-title">
+  <form method="dialog">
+    <h2 id="how-title">How it works</h2>
+    <p id="howNote" class="lead" hidden>These folder names are examples until you add your own in Settings.</p>
+    <div id="howBody">
+      <div id="howMap"></div>
+      <div class="how-rail">
+        <div class="how-label">What the office does</div>
+        <div id="howOffice" class="how-row"></div>
+        <div class="how-label">Set it up once</div>
+        <div id="howSetup" class="how-row how-stack"></div>
+        <div id="howOut" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="actions how-actions">
+      <span class="grow"></span>
+      <button type="button" id="howClose" class="primary">Close</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="/static/app.js"></script>
+<script src="/static/how.js"></script>
 </body>
 </html>
