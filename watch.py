@@ -42,6 +42,9 @@ LOCK_TRIES = 8  # a quarter of a second apart: the window's running() check hold
 DRIVE_EVERY = 30  # seconds between looks at whether Google Drive is running
 RENAME_AGAIN = 60  # seconds between tries at renaming a file that was in use (free: its name is kept)
 LOG_LIMIT = 1_000_000  # bytes; then the log starts again, keeping one old file
+# Looks in a row that fail (two minutes): the watcher stops and says so rather than run on broken,
+# say when its own files were replaced under it. The window then offers Start.
+BROKEN_LOOKS = 24
 
 PROBLEMS = {  # each is said once, and again only after it cleared and came back
     "folder": "Smart Explorer can't find {folder}. Check Google Drive is running and signed in.",
@@ -894,6 +897,20 @@ def spawn(popen=subprocess.Popen):
           stderr=subprocess.DEVNULL, close_fds=True, **kw)
 
 
+def _broken(w, e):
+    """Stop for good after every look failed, and say so: the status bar and the start
+    screen then show it isn't watching, with Start, instead of a watcher that does nothing."""
+    try:
+        if hasattr(w, "mark_stopped"):
+            w.mark_stopped()
+        else:
+            config.write_json(watch_dir() / "status.json", {"state": "stopped", "message": "Background renaming stopped",
+                                                             "heartbeat": time.time()})
+    except Exception:
+        pass
+    _say("Smart Explorer stopped watching: it kept failing (%s). Open Smart Explorer and click Start." % e)
+
+
 def main(sleep=time.sleep, watcher=None, now=False):
     """Watch until stopped or switched off. Returns at once when another watcher runs."""
     lock = take_lock()
@@ -907,6 +924,7 @@ def main(sleep=time.sleep, watcher=None, now=False):
     _take_stop()
     w = watcher or Watcher(startup=not now)  # now: started from the window, the computer is already up
     log("Started")
+    failed = 0  # looks in a row that failed
     try:
         while True:
             if _take_stop():
@@ -918,8 +936,14 @@ def main(sleep=time.sleep, watcher=None, now=False):
                 if not w.tick():
                     log("Watching is off: stopped")
                     break
-            except Exception as e:  # one bad look must not end the watching
+                failed = 0
+            except Exception as e:  # one bad look must not end the watching; every look failing does
                 log("Error: %r" % (e,))
+                failed += 1
+                if failed >= BROKEN_LOOKS:
+                    log("Every look failed %d times in a row: stopped" % failed)
+                    _broken(w, e)
+                    break
             sleep(POLL)
     finally:
         if isinstance(getattr(w, "loops", None), loopwatch.Loops):
