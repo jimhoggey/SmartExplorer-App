@@ -38,8 +38,9 @@ const howSame = (a, b) => !!a && !!b && folderKey(a) === folderKey(b);
 const howState = () => JSON.stringify({ rows: watchRows, on: els.wOn.checked });
 
 // The map's two rows: slide folders (renamed) and loop folders (made into videos), with
-// examples for a row that has none. A folder with both ticks is in both. Videos are grouped
-// by the folder they go to. slide and loop are the folders the office's buttons talk about.
+// examples for a row that has none. A folder with both ticks is in both. outputs: the folders
+// the videos go to, each once (ProPresenter links each once). slide and loop are the folders
+// the office's buttons talk about.
 function howRead(rows) {
   const slides = rows.filter((r) => r.rename), loops = rows.filter((r) => r.render);
   const l = { slides: slides.length ? slides : HOW_SLIDES, loops: loops.length ? loops : HOW_LOOPS, outputs: [] };
@@ -110,18 +111,24 @@ function howNames(r) {
   });
 }
 
-// One folder the videos go to, in the ProPresenter column, with the videos in it.
-function howVideos(o, l, bad) {
-  const ex = o.rows[0].example;
-  const box = hm("div", "hm-videos hm-in coral" + (ex ? " ghost" : "") + (!ex && !o.path ? " need" : "")
-    + (howSame(bad, o.path) ? " bad" : ""), `c3${ex ? "" : " c2"} loop${o.rows.includes(l.loop) ? " both" : ""}`);
-  const head = make("div", "hm-vhead"), title = make("b", "", o.path ? folderName(o.path) : "Where do the videos go?");
-  title.title = o.path;
-  head.append(title);
-  if (!ex) head.append(linkButton(o.path ? "Change" : "Choose", inDialog($("howMsg"), () => howOutput(o))));
-  box.append(head);
-  if (!ex && o.path) box.append(howPath(o.path, "hm-vpath"));
-  for (const r of o.rows) box.append(howLabel(r, "hm-vname", ".mp4"));
+// One loop's video in the ProPresenter column: a smart playlist like the slide folders', on
+// the folder this video goes to. Each video has its own folder, so two can go to two places.
+function howVideo(r, l, bad) {
+  const out = cleanFolder(r.output);
+  const box = hm("div", "hm-videos hm-in coral" + (r.example ? " ghost" : "") + (!r.example && !out ? " need" : "")
+    + (howSame(bad, out) ? " bad" : ""), `c3${r.example ? "" : " c2"} loop${r === l.loop ? " both" : ""}`);
+  const where = make("small", "hm-vfolder", "Smart playlist: " + (out ? folderName(out) : "no folder yet"));
+  where.title = out;
+  box.append(howLabel(r, "hm-vtitle", ".mp4"), where);
+  if (r.example) return box;
+  const pick = inDialog($("howMsg"), () => howOutput(r));
+  if (out) box.append(linkButton("Change folder", pick));
+  else {
+    const b = make("button", "hm-add", "Choose a folder for this video");
+    b.type = "button";
+    b.onclick = pick;
+    box.append(b);
+  }
   return box;
 }
 
@@ -168,7 +175,7 @@ function howDraw(bad) {
     s.append(make("small", "", step), make("b", "", title), make("span", "", sub));
     steps.append(s);
   });
-  for (const o of l.outputs) lto.append(howVideos(o, l, bad));
+  for (const r of l.loops) lto.append(howVideo(r, l, bad));
   grid.append(lfrom, steps, lto);
 
   const office = hm("div", "hm-band", HOW_JOBS), lines = make("span");
@@ -205,10 +212,11 @@ async function howAdd(lane) {
   renderFolders();
 }
 
-async function howOutput(o) {
+// Where one loop's video goes: only that loop's, so the loops can go to different folders.
+async function howOutput(r) {
   const path = await howPick();
   if (!path) return;
-  for (const r of o.rows) r.output = path;
+  r.output = path;
   say($("howMsg"), "");
   renderFolders();
 }
@@ -255,7 +263,7 @@ function howSteps(key, l) {
   if (key === "c2") {
     return [...(status.has_key ? [] : ["Paste your OpenRouter key at the top of Settings and click Test key. Naming needs it; videos don't."]),
       "Slide folders: click + Add a folder in the top row.",
-      "Loop folders: click + Add a folder in the bottom row, then Choose where the videos go: a folder outside Google Drive.",
+      "Loop folders: click + Add a folder in the bottom row, then Choose a folder for this video in the ProPresenter column: one outside Google Drive.",
       "Type over a name to change it. A loop's name is its video's name, which RunsheetPilot looks for.",
       "Tick Watch these folders by itself, then click Save.",
       "Service times and starting with the computer are in Settings, under Folders."];

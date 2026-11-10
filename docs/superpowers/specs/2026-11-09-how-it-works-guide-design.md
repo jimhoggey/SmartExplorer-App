@@ -18,8 +18,10 @@ a name of its own, which needn't match the folder's ("Each folder's name may not
 - **Set up folders** on the start screen, or *Settings → Folders → Open*, opens the **folders map** on top of
   Settings, which stays open. **+ Add a folder** in a row of the Google Drive column adds a slide folder (top row,
   Rename new files) or a loop folder (bottom row, Render into video); its name box sets the row's name (a loop's
-  is its video's name); **×** takes it out of that row. **Choose** in the ProPresenter column picks where a group
-  of videos goes; a new loop starts with the folder the other videos go to. **Save** saves them as Settings' Save
+  is its video's name); **×** takes it out of that row. Each loop's video has its own box in the ProPresenter column
+  ("Pre-service loop.mp4 · Smart playlist: ProPresenter Loops"), and its own **Choose** / **Change folder**, so
+  two loops can go to two folders (Fynn, 10 Nov: one box per folder didn't allow that). A new loop starts with
+  the folder the other videos go to, when they all go to one. **Save** saves them as Settings' Save
   does (the same checks; a folder Save rejects is marked red), with *Watch these folders by itself* beside it.
   **Cancel** or Escape puts back what was there. Drawn in HTML, not SVG, so names are real text boxes.
 - *Settings → Folders* keeps a list to read: each folder's name, what it does, and a loop's line with Render now.
