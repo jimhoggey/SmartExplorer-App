@@ -18,6 +18,11 @@ function sunIcon(state) {
   return svg;
 }
 
+$("sunMore").onclick = () => {
+  const open = $("sunday").classList.toggle("open");
+  $("sunMore").textContent = open ? "Hide details" : "Details";
+};
+
 function showSunday(w) {
   const s = w.sunday || { state: "off" }, on = s.state !== "off";
   $("autoIntro").hidden = on;
@@ -28,10 +33,13 @@ function showSunday(w) {
   $("sunBadge").replaceChildren(sunIcon(s.state));
   $("sunHead").textContent = s.headline;
   $("sunSince").textContent = s.since;
+  // One line each, read at a glance: a coloured icon, the folder, a word or two. The sentences
+  // (what it's doing now, what's in it) only show under Details.
   $("sunRows").replaceChildren(...s.rows.map((r) => {
-    const li = make("li", "sun-" + r.state);
-    li.append(sunIcon(r.state), make("b", "", r.name), make("span", "", r.text));
-    if (r.detail) li.append(make("small", "sun-detail", r.detail));  // what it's doing now, and what's in it
+    const li = make("li", "sun-" + r.state), dot = make("span", "sun-dot");
+    dot.append(sunIcon(r.state));
+    li.append(dot, make("b", "", r.name), make("span", "sun-pill", r.short || r.text),
+      make("small", "sun-more", [r.text, r.detail].filter(Boolean).join(" · ")));
     return li;
   }));
   const latest = $("sunLatest");

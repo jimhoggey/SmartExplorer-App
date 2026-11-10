@@ -36,8 +36,19 @@ def full(out, name):
 
 
 def line(out, name):
-    """A folder's line without its second line (detail)."""
-    return {k: v for k, v in full(out, name).items() if k != "detail"}
+    """A folder's line without the glance word (short) and the second line (detail)."""
+    return {k: v for k, v in full(out, name).items() if k not in ("detail", "short")}
+
+
+def test_each_line_has_a_word_or_two_to_read_at_a_glance(tmp_path):
+    d = named(tmp_path)
+    assert full(check(table(str(d))), "Announcements")["short"] == "Ready, 2 new"
+    assert full(check(table(str(d)), ahead=LATER), "Announcements")["short"] == "Nothing new"
+    assert full(check(table({"path": str(d), "weekly": False}), ahead=LATER), "Announcements")["short"] == "Ready"
+    png(d / "IMG_1.png")
+    assert full(check(table(str(d))), "Announcements")["short"] == "Naming 1"
+    assert full(check(table(str(d)), problems=["credit"]), "Announcements")["short"] == "Paused"
+    assert full(check(table(str(tmp_path / "gone"))), "gone")["short"] == "Folder missing"
 
 
 def test_each_folder_says_what_is_happening_and_what_is_in_it(tmp_path):
@@ -78,7 +89,7 @@ def test_nothing_new_this_week_is_said_unless_the_folder_doesnt_change_weekly(tm
 
 def test_the_week_is_counted_from_the_end_of_the_last_service(tmp_path):
     out = check(table(str(named(tmp_path)), times=[{"day": 6, "from": "08:00", "to": "15:00"}]), ahead=LATER)
-    assert out["since"].startswith("Since the end of Sunday's service, 3:00pm ")
+    assert out["since"] == "Since Sunday 3:00pm"
     assert line(out, "Announcements")["text"].startswith("Nothing new since Sunday 3:00pm")
 
 

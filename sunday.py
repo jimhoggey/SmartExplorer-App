@@ -56,8 +56,7 @@ def _since_text(times, since):
         return "Over the last 7 days", "over the last 7 days"
     lt = time.localtime(since)
     day, clock = config.DAYS[lt.tm_wday], _clock(since)
-    return ("Since the end of %s's service, %s %s" % (day, clock, time.strftime("%d %b", lt).lstrip("0")),
-            "since %s %s" % (day, clock))
+    return "Since %s %s" % (day, clock), "since %s %s" % (day, clock)
 
 
 def _clock(t):
@@ -85,9 +84,25 @@ def arrived(path):
     return max(st.st_mtime, born or 0)
 
 
+def _slide_short(out, live):
+    """The few words a volunteer reads at a glance: Ready, Nothing new, Naming 3, Folder missing."""
+    state, text = out["state"], out["text"]
+    if state == "ok":
+        return "Ready, %d new" % out["fresh"] if out.get("fresh") else "Ready"
+    if state == "warn":
+        return "Nothing new"
+    if state == "work":
+        return "Downloading" if live and live.get("state") == "downloading" else "Naming %d" % out.get("waiting", 0)
+    if text.startswith("Can't find"):
+        return "Folder missing"
+    return "Can't open" if text.startswith("Can't open") else "Paused"
+
+
 def _slides(r, since, since_short, problems, live, now):
     out = _slide_state(r, since, since_short, problems)
+    out["short"] = _slide_short(out, live)
     files = out.pop("files", None)
+    out.pop("waiting", None)
     if files is None:
         return out
     # The second line: what it's doing now, what's in the folder, and why old files weren't named.
@@ -126,7 +141,8 @@ def _slide_state(r, since, since_short, problems):
         except OSError:
             pass
     # for the second line; left: a drop folder's files from before it was added, which stay put
-    counts = {"files": len(files), "fresh": fresh, "left": len(dropped) - waiting if shown != path else 0}
+    counts = {"files": len(files), "fresh": fresh, "waiting": waiting,
+              "left": len(dropped) - waiting if shown != path else 0}
     if waiting:
         paused = next((PAUSED[p] for p in PAUSED if p in problems), None)
         text = "%d waiting to be named" % waiting
@@ -143,15 +159,18 @@ def _loop(r, since, since_short, line, rec, now):
     name = r["name"] + ".mp4"
     state, text = (line or {}).get("state", "none"), (line or {}).get("text", "Not made yet")
     if state in BAD:
-        return {"name": name, "state": "bad", "text": text}
+        return {"name": name, "state": "bad", "text": text,
+                "short": "Folder missing" if state == "missing" else "Video failed"}
     if state == "empty":
-        return {"name": name, "state": "warn", "text": "Its folder is empty, so there's no video"}
+        return {"name": name, "state": "warn", "text": "Its folder is empty, so there's no video", "short": "Empty"}
     if state != "ok":
-        return {"name": name, "state": "work", "text": text if state != "none" else "Not made yet"}
+        short = {"rendering": "Making video", "held": "After the service", "none": "Not made yet"}.get(state, "Waiting")
+        return {"name": name, "state": "work", "text": text if state != "none" else "Not made yet", "short": short}
     made = (rec or {}).get("made") or 0
     if r["weekly"] and made < since:
-        return {"name": name, "state": "warn", "text": "Same video as last week: nothing new " + since_short}
-    return {"name": name, "state": "ok",
+        return {"name": name, "state": "warn", "text": "Same video as last week: nothing new " + since_short,
+                "short": "Nothing new"}
+    return {"name": name, "state": "ok", "short": "Ready",
             "text": "Video made %s, %s" % (_when(made, now), _plural((rec or {}).get("screens", 0), "screen"))}
 
 
@@ -169,8 +188,8 @@ def _headline(rows):
 
 def check(settings, status, running, starting, lines, recs, now):
     """{"state": ok/warn/work/bad/unknown/off, "headline", "since", "rows": [{"name", "state",
-    "text"}], "latest": [{"when", "folder", "from", "to"}]}. lines: loopwatch.lines();
-    recs: loopwatch.records()."""
+    "short" (read at a glance), "text", "detail"? (both behind Details)}], "latest": [{"when",
+    "folder", "from", "to"}]}. lines: loopwatch.lines(); recs: loopwatch.records()."""
     if not settings["enabled"] or not settings["rows"]:
         return {"state": "off"}
     since = week_start(settings["service_times"], now)
@@ -178,7 +197,8 @@ def check(settings, status, running, starting, lines, recs, now):
     problems = {p.split("|")[0] for p in (status or {}).get("problems") or []} if running else set()
     rows = []
     if "drive" in problems:
-        rows.append({"name": "Google Drive", "state": "bad", "text": "Isn't running, so new files can't arrive"})
+        rows.append({"name": "Google Drive", "state": "bad", "text": "Isn't running, so new files can't arrive",
+                     "short": "Not running"})
     states = {config.folder_key(k): v for k, v in ((status or {}).get("folder_states") or {}).items()
               if isinstance(v, dict)} if running else {}
     for r in settings["rows"]:

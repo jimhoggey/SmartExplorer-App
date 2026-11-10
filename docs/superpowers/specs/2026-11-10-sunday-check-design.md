@@ -47,6 +47,15 @@ couple of minutes". So each slide folder's line has a small second line:
 - When the folder was added, if this week: "added 4:21pm: files already in it were left as they are"
   (`known.recorded`, set when watching began for it).
 
+## At a glance (10 Nov, later)
+
+"Make it super super clear so a volunteer can look at this at a glance without reading the little grey text."
+Each folder is now one line: a coloured icon, its name, and a pill with a word or two (`short`): Ready, Ready,
+3 new, Nothing new, Naming 2, Downloading, Paused, Folder missing, Making video, After the service, Video failed,
+Empty. The sentences above (`text`, `detail`) and the Latest list only show under **Details**. The headline says
+"Since Sunday 12:00pm", and one short line under the folders keeps the honest part: "Checks that files arrived and
+were named, not what's in them."
+
 ## Changes every week
 
 A tick on each folder on the folders map, on by default (`weekly` in the row). Untick it for a folder that stays
