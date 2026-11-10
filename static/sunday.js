@@ -31,6 +31,7 @@ function showSunday(w) {
   $("sunRows").replaceChildren(...s.rows.map((r) => {
     const li = make("li", "sun-" + r.state);
     li.append(sunIcon(r.state), make("b", "", r.name), make("span", "", r.text));
+    if (r.detail) li.append(make("small", "sun-detail", r.detail));  // what it's doing now, and what's in it
     return li;
   }));
   const latest = $("sunLatest");

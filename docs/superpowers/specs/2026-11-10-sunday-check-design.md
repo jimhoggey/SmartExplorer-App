@@ -35,6 +35,18 @@ after the week began. Nothing is stored for it. Where it can be wrong, it errs t
 its old dates keeps them. One way it could tick wrongly: Google Drive downloading everything again (a reinstall)
 makes every file look new.
 
+## A second line: what it's doing now (added 10 Nov)
+
+Fynn added a folder of old images and couldn't tell whether it was "sending those to the AI ... or waiting a
+couple of minutes". So each slide folder's line has a small second line:
+- What the background copy is doing with it now, from `folder_states` in status.json (the watcher writes one per
+  folder every look): "Watching, nothing waiting", "Waiting for 2 files to finish downloading", "2 new files found:
+  renaming in 40 s, in case more are on the way", "Renaming 2 files now", "renaming is paused", stuck or given up.
+  Left out when the background copy isn't running, rather than shown stale.
+- How many files are in it, and "none new since …" when none are.
+- When the folder was added, if this week: "added 4:21pm: files already in it were left as they are"
+  (`known.recorded`, set when watching began for it).
+
 ## Changes every week
 
 A tick on each folder on the folders map, on by default (`weekly` in the row). Untick it for a folder that stays

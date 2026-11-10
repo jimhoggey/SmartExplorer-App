@@ -27,6 +27,18 @@ def test_recorded_files_are_not_new_but_later_ones_are(tmp_path):
     assert names(known.new_files(tmp_path)) == ["2.png", "10.png"]
 
 
+def test_a_folder_remembers_when_it_was_recorded(tmp_path):
+    assert known.recorded(tmp_path) is None
+    png(tmp_path / "a.png")
+    before = __import__("time").time()
+    known.record_folder(tmp_path)
+    when = known.recorded(tmp_path)
+    assert when is not None and before - 1 <= when <= before + 5
+    known.add(tmp_path, [("b.png", "1:1")])
+    known.forget_names(tmp_path, {"a.png"})
+    assert known.recorded(tmp_path) == when  # kept while the record changes
+
+
 def test_hand_renamed_and_replaced_files_are_not_new(tmp_path):
     png(tmp_path / "a.png")
     png(tmp_path / "b.png")

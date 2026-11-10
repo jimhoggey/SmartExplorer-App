@@ -347,6 +347,7 @@ class Watcher:
         self.last_key = None  # the folder batched last: the next look starts with the one after it
         self.loops = loopwatch.Loops(lambda text: self.say(text), log, render)
         self.loop_note = (0, "")  # (rank, text) the loops add to the status line
+        self.folder_notes = {}  # path -> {"state", "text"}: what each folder is waiting on (the Sunday check)
 
     @property
     def failures(self):
@@ -408,13 +409,14 @@ class Watcher:
             fw.track(now, current)
             fw.forget_absent(now, listing)
             looked.append(fw)
+        left = self.started + wait - now
+        self._note_folders(looked, troubled, now, left)
         if not looked:  # no folder to look at: say why, as for one folder
             fw, trouble = troubled[0]
             if self._key(trouble, fw) in self.problems:
                 return self._status("paused", "Paused: " + self._paused(trouble, s, fw))
             return self._status("waiting", "Waiting for %s to appear" % fw.name)
         self._check_drive(s, now, wait)
-        left = self.started + wait - now
         if left > 0:
             return self._status("waiting", "Waiting for Google Drive, %d min left" % math.ceil(left / 60))
         if not self.checked:
@@ -452,6 +454,39 @@ class Watcher:
         if busy:
             return self._status(*busy)
         return self._status("watching", self._watching(troubled))
+
+    def _note_folders(self, looked, troubled, now, wait_left):
+        """What each folder is waiting on, in a few words, for the start screen."""
+        notes = {}
+        paused = bool(self.problems & {"nokey", "limit", "connection", "key", "credit"})
+        for fw, trouble in troubled:
+            notes[str(fw.path)] = {"state": "missing", "text": "Can't find it" if trouble == "folder" else "Can't open it"}
+        for fw in looked:
+            ready = fw.ready(now)
+            settling = fw.settling(ready, now)
+            quiet = (GAP if fw.batches else FIRST_GAP) - (now - fw.activity)
+            later = [f for f in fw.failures if fw.later(f, now) and f not in fw.given_up]
+            if wait_left > 0:
+                note = ("waiting", "Waiting for Google Drive, %d min left" % math.ceil(wait_left / 60))
+            elif settling:
+                note = ("downloading", "Waiting for %s to finish downloading" % _plural(len(settling), "file"))
+            elif ready and paused:
+                note = ("paused", "%s waiting: renaming is paused" % _plural(len(ready), "new file"))
+            elif ready and quiet > 0:
+                note = ("waiting", "%s found: renaming in %d s, in case more are on the way"
+                        % (_plural(len(ready), "new file"), math.ceil(quiet)))
+            elif ready:
+                note = ("waiting", "Renaming %s next" % _plural(len(ready), "new file"))
+            elif fw.stuck:
+                note = ("stuck", "%s named but not renamed yet: open in another program?" % _plural(len(fw.stuck), "file"))
+            elif later:
+                note = ("waiting", "%s couldn't be named yet: trying again soon" % _plural(len(later), "file"))
+            elif fw.given_up:
+                note = ("stuck", "%s couldn't be named: left under the old name" % _plural(len(fw.given_up), "file"))
+            else:
+                note = ("watching", "Watching, nothing waiting")
+            notes[str(fw.path)] = {"state": note[0], "text": note[1]}
+        self.folder_notes = notes
 
     def mark_stopped(self):
         self.loops.stop_all()
@@ -508,7 +543,7 @@ class Watcher:
         data = {"state": state, "message": message, "folder": paths[0] if paths else "", "folders": paths,
                 "heartbeat": time.time(), "last_batch": self.last_batch, "problems": sorted(self.problems),
                 "stuck": len(self._stuck()),  # files named but not renamed yet: the window offers Try again
-                "loops": self.loops.status()}
+                "loops": self.loops.status(), "folder_states": self.folder_notes}
         try:
             config.write_json(watch_dir() / "status.json", data)
         except OSError:
@@ -586,6 +621,7 @@ class Watcher:
         items = [{"id": i, "path": str(p), "name": p.name, "kind": scanner.kind(p)} for i, p in enumerate(paths)]
         where = self._where(fw)
         self.say("Renaming %s%s…" % (_plural(len(items), "new file"), where))
+        self.folder_notes[str(fw.path)] = {"state": "renaming", "text": "Renaming %s now" % _plural(len(items), "file")}
         self._status("renaming", "Renaming %s%s…" % (_plural(len(items), "file"), where))
         log("Batch in %s: %s" % (fw.name, ", ".join(p.name for p in paths)))
         failed, done = {}, {}  # failed: id -> whether a paid request failed for it; done: id -> final name

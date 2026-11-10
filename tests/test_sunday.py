@@ -4,6 +4,7 @@ import time
 import config
 import known
 import sunday
+import watch
 from test_watch import Fake, folder, png, run, start  # noqa: F401  (folder is a fixture)
 
 DAY = 86400
@@ -14,9 +15,9 @@ def table(*rows, times=(), enabled=True):
     return {"enabled": enabled, "rows": config.rows(list(rows)), "service_times": list(times)}
 
 
-def check(s, problems=(), running=True, lines=None, recs=None, ahead=60, heartbeat=0):
+def check(s, problems=(), running=True, lines=None, recs=None, ahead=60, heartbeat=0, states=None):
     now = time.time() + ahead
-    status = {"heartbeat": now - heartbeat, "problems": list(problems)}
+    status = {"heartbeat": now - heartbeat, "problems": list(problems), "folder_states": states or {}}
     return sunday.check(s, status, running, False, lines or {}, recs or {}, now)
 
 
@@ -30,8 +31,25 @@ def named(tmp_path, name="Announcements", count=2):
     return d
 
 
-def line(out, name):
+def full(out, name):
     return next(r for r in out["rows"] if r["name"] == name)
+
+
+def line(out, name):
+    """A folder's line without its second line (detail)."""
+    return {k: v for k, v in full(out, name).items() if k != "detail"}
+
+
+def test_each_folder_says_what_is_happening_and_what_is_in_it(tmp_path):
+    d = named(tmp_path)
+    watching = {str(d): {"state": "watching", "text": "Watching, nothing waiting"}}
+    detail = full(check(table(str(d)), states=watching), "Announcements")["detail"]
+    assert detail.startswith("Watching, nothing waiting · 2 files here · added ")
+    assert detail.endswith(": files already in it were left as they are")
+    detail = full(check(table(str(d)), states=watching, ahead=LATER), "Announcements")["detail"]
+    assert detail == "Watching, nothing waiting · 2 files here, none new over the last 7 days"  # added long ago
+    assert full(check(table(str(d)), running=False, ahead=LATER), "Announcements")["detail"] == \
+        "2 files here, none new over the last 7 days"  # nothing live when the background copy isn't running
 
 
 def test_nothing_to_show_while_watching_is_off(tmp_path):
@@ -119,6 +137,22 @@ def test_latest_says_what_was_named_newest_first_in_the_folders_own_name(tmp_pat
     assert [(e["folder"], e["from"], e["to"]) for e in out["latest"]] == [
         ("Service slides", "IMG_24.png", "Slide 24"), ("Service slides", "IMG_23.png", "Slide 23"),
         ("Service slides", "IMG_22.png", "Slide 22"), ("Service slides", "IMG_21.png", "Slide 21")]
+
+
+def test_the_watcher_says_what_each_folder_is_doing(folder):
+    w, clock = start(Fake())
+    state = lambda: watch.read_status()["folder_states"][str(folder)]
+    run(w, clock, 10)
+    assert state() == {"state": "waiting", "text": "Waiting for Google Drive, 3 min left"}
+    run(w, clock, 180)
+    assert state() == {"state": "watching", "text": "Watching, nothing waiting"}
+    png(folder / "welcome.png")
+    run(w, clock, 5)
+    assert state() == {"state": "downloading", "text": "Waiting for 1 file to finish downloading"}
+    run(w, clock, 15)
+    assert state() == {"state": "waiting", "text": "1 new file found: renaming in 45 s, in case more are on the way"}
+    run(w, clock, 60)
+    assert state() == {"state": "watching", "text": "Watching, nothing waiting"}
 
 
 def test_the_watcher_notes_what_it_named(folder):

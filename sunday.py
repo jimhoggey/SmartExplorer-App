@@ -85,7 +85,23 @@ def arrived(path):
     return max(st.st_mtime, born or 0)
 
 
-def _slides(r, since, since_short, problems):
+def _slides(r, since, since_short, problems, live, now):
+    out = _slide_state(r, since, since_short, problems)
+    files = out.pop("files", None)
+    if files is None:
+        return out
+    # The second line: what it's doing now, what's in the folder, and why old files weren't named.
+    parts = [live["text"]] if live and live.get("text") else []
+    fresh = out.pop("fresh")
+    parts.append(_plural(files, "file") + " here" + (", none new " + since_short if files and not fresh else ""))
+    added = known.recorded(r["path"])
+    if added and added >= since:
+        parts.append("added %s: files already in it were left as they are" % _when(added, now))
+    out["detail"] = " · ".join(parts)
+    return out
+
+
+def _slide_state(r, since, since_short, problems):
     name, path = r["name"], Path(r["path"])
     if not path.is_dir():
         return {"name": name, "state": "bad", "text": "Can't find the folder"}
@@ -94,22 +110,23 @@ def _slides(r, since, since_short, problems):
         waiting = len(known.new_files(path)) if known.has_record(path) else 0
     except OSError:
         return {"name": name, "state": "bad", "text": "Can't open the folder"}
-    if waiting:
-        paused = next((PAUSED[p] for p in PAUSED if p in problems), None)
-        text = "%d waiting to be named" % waiting
-        return {"name": name, "state": "bad", "text": "%s: %s" % (text, paused)} if paused else \
-            {"name": name, "state": "work", "text": text}
     fresh = 0
     for p in files:
         try:
             fresh += arrived(p) >= since
         except OSError:
             pass
+    counts = {"files": len(files), "fresh": fresh}  # for the second line
+    if waiting:
+        paused = next((PAUSED[p] for p in PAUSED if p in problems), None)
+        text = "%d waiting to be named" % waiting
+        return dict(counts, name=name, state="bad", text="%s: %s" % (text, paused)) if paused else \
+            dict(counts, name=name, state="work", text=text)
     if fresh:  # not "all named": files already there when watching began are left as they are
-        return {"name": name, "state": "ok", "text": "%d new this week, nothing waiting to be named" % fresh}
+        return dict(counts, name=name, state="ok", text="%d new this week, nothing waiting to be named" % fresh)
     if r["weekly"]:
-        return {"name": name, "state": "warn", "text": "Nothing new " + since_short}
-    return {"name": name, "state": "ok", "text": "Nothing new, and it doesn't change every week"}
+        return dict(counts, name=name, state="warn", text="Nothing new " + since_short)
+    return dict(counts, name=name, state="ok", text="Nothing new, and it doesn't change every week")
 
 
 def _loop(r, since, since_short, line, rec, now):
@@ -152,10 +169,12 @@ def check(settings, status, running, starting, lines, recs, now):
     rows = []
     if "drive" in problems:
         rows.append({"name": "Google Drive", "state": "bad", "text": "Isn't running, so new files can't arrive"})
+    states = {config.folder_key(k): v for k, v in ((status or {}).get("folder_states") or {}).items()
+              if isinstance(v, dict)} if running else {}
     for r in settings["rows"]:
         key = config.folder_key(r["path"])
         if r["rename"]:
-            rows.append(_slides(r, since, since_short, problems))
+            rows.append(_slides(r, since, since_short, problems, states.get(key), now))
         if r["render"]:
             rows.append(_loop(r, since, since_short, lines.get(key), recs.get(key), now))
     state, headline = _headline(rows)
