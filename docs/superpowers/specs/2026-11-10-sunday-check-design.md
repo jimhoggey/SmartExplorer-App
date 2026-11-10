@@ -42,5 +42,8 @@ the same (Service slides: giving, welcome), so it isn't amber every week and peo
 
 ## The map's colours
 
-The map's boxes went neutral at the same time ("Orange makes me think that there's something wrong"): green,
-amber and red mean how things stand, here, and nothing else.
+Orange for the loops read as a problem ("Orange makes me think that there's something wrong"). After a
+neutral try, Fynn asked for colour by place instead: Google Drive blue, Smart Explorer purple, ProPresenter
+green ("I liked having the green boxes"). Amber and red never appear on the map, so on the start screen they
+only ever mean a problem. The start screen also hides the naming tools (Choose folder, the path box, the
+naming style, Keep order) until a folder is loaded: they belong to "Rename a folder now".

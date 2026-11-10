@@ -121,7 +121,7 @@ function howNames(r) {
 // the folder this video goes to. Each video has its own folder, so two can go to two places.
 function howVideo(r, l, bad) {
   const out = cleanFolder(r.output);
-  const box = hm("div", "hm-videos hm-in coral" + (r.example ? " ghost" : "") + (!r.example && !out ? " need" : "")
+  const box = hm("div", "hm-videos hm-in pp" + (r.example ? " ghost" : "") + (!r.example && !out ? " need" : "")
     + (howSame(bad, out) ? " bad" : ""), `c3${r.example ? "" : " c2"} loop${r === l.loop ? " both" : ""}`);
   const where = make("small", "hm-vfolder", "Smart playlist: " + (out ? folderName(out) : "no folder yet"));
   where.title = out;
@@ -158,26 +158,27 @@ function howDraw(bad) {
   }
 
   // Slide folders: named where they are, a playlist for each.
-  const from = at(make("div", "hm-col"), 1, 2), to = at(make("div", "hm-col"), 5, 2);
+  // Each place has its own colour: Google Drive blue, Smart Explorer purple, ProPresenter green.
+  const from = at(make("div", "hm-col drive"), 1, 2), to = at(make("div", "hm-col"), 5, 2);
   for (const r of l.slides) {
-    const on = r === l.slide ? "new swap both" : "", pp = hm("div", "hm-chip hm-in teal" + (r.example ? " ghost" : ""), `c3 ${on}`);
+    const on = r === l.slide ? "new swap both" : "", pp = hm("div", "hm-chip hm-in pp" + (r.example ? " ghost" : ""), `c3 ${on}`);
     from.append(howFolder(r, "slide", `c1 ${on}`, bad));
     pp.append(howLabel(r, ""));
     if (!r.example) pp.append(howPath(r.path));
     to.append(pp);
   }
   from.append(howAddButton("slide"));
-  const names = at(hm("div", "hm-box teal", "c2 new swap both"), 3, 2);
+  const names = at(hm("div", "hm-box se", "c2 new swap both"), 3, 2);
   names.append(make("b", "", "Names each new file"), make("span", "", "IMG_2231.png becomes Welcome Home.png"),
     make("span", "", "It stays in the same folder"));
   grid.append(from, names, to);
 
   // Loop folders: two steps, because the video ends up in another folder.
-  const lfrom = at(make("div", "hm-col"), 1, 3), steps = at(make("div", "hm-steps"), 3, 3), lto = at(make("div", "hm-col"), 5, 3);
+  const lfrom = at(make("div", "hm-col drive"), 1, 3), steps = at(make("div", "hm-steps"), 3, 3), lto = at(make("div", "hm-col"), 5, 3);
   for (const r of l.loops) lfrom.append(howFolder(r, "loop", `c1 loop${r === l.loop ? " both" : ""}`, bad));
   lfrom.append(howAddButton("loop"));
   [["Step 1", "Makes one video", "From all its screens"], ["Step 2", "Saves the video", "To a different folder"]].forEach(([step, title, sub], n) => {
-    const s = hm("div", "hm-box coral" + (n ? " hm-in hm-near" : ""), "c2 loop both");
+    const s = hm("div", "hm-box se" + (n ? " hm-in hm-near" : ""), "c2 loop both");
     s.append(make("small", "", step), make("b", "", title), make("span", "", sub));
     steps.append(s);
   });

@@ -97,6 +97,7 @@ function render() {
   els.grid.innerHTML = "";
   numberItems();
   els.empty.hidden = items.length > 0;
+  document.querySelector(".panel").hidden = !items.length;  // the naming tools come with the files
   showEmpty(true);
   items.forEach((it, n) => {
     const card = document.createElement("article");
@@ -868,8 +869,13 @@ window.onDropPaths = (paths) => {
 };
 
 els.pick.onclick = els.pickEmpty.onclick = async () => {
+  if (!window.pywebview) {  // a plain browser has no folder window, and the path box hides with the toolbar
+    const path = (prompt("Paste the folder's path") || "").trim();
+    if (path) load([path]);
+    return;
+  }
   const { folder } = await api("pick-folder");
-  if (folder) load([folder]); else els.folder.focus();
+  if (folder) load([folder]); else if (items.length) els.folder.focus();
 };
 // Block bodies on purpose: an on<event> handler that returns false cancels the
 // event, and `e.key === "Enter" && ...` is false for every other key, which

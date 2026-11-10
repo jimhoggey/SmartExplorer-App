@@ -491,12 +491,17 @@ dialog#how { width: min(1140px, 96vw); }
   padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
   font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
-/* The map's boxes are all neutral: green, amber and red mean how things stand (the Sunday
-   check), never what kind of folder it is. Orange here read as "something's wrong". */
-.hm-grid .teal, .hm-grid .coral { border-color: var(--line-2); background: var(--surface); color: var(--mute); }
-.hm-grid .teal b, .hm-grid .coral b { color: var(--ink); }
-.hm-grid .ghost.teal, .hm-grid .ghost.coral { border-style: dashed; background: none; color: var(--dim); }
-.hm-grid .ghost.teal b, .hm-grid .ghost.coral b { color: var(--dim); }
+/* Colour says which place a box is in: Google Drive blue, Smart Explorer purple, ProPresenter
+   green. Never amber or red, which mean a problem (the Sunday check); orange here read as one. */
+.hm-col.drive .hm-chip:not(.ghost) { border-color: #85b7eb; background: #e6f1fb; }
+.hm-col.drive .hm-chip small, .hm-col.drive label.hm-weekly { color: #185fa5; }
+.hm-col.drive .hm-chip.ghost { border-color: #85b7eb; color: #378add; }
+.hm-grid .se { border-color: #7f77dd; background: #eeedfe; color: #534ab7; }
+.hm-grid .se b { color: #3c3489; }
+.hm-grid .pp { border-color: #0f6e56; background: #e1f5ee; color: #0f6e56; }
+.hm-grid .pp b { color: #085041; }
+.hm-grid .pp.ghost { border-style: dashed; background: none; }
+.hm-grid .pp.ghost b { color: #0f6e56; }
 .hm-grid .hm-videos.need { border-style: dashed; background: var(--surface); }
 .hm-grid .hm-chip.bad, .hm-grid .hm-videos.bad { border-color: var(--err); background: var(--err-soft); }
 .how-label { margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--mute); }
