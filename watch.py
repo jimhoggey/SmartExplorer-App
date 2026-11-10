@@ -209,6 +209,7 @@ class FolderWatch:
     def __init__(self, path, now):
         self.path = Path(path)
         self.name = self.path.name or str(self.path)
+        self.move_to = ""  # a drop folder's: where its files go once named (the folder ProPresenter links)
         self.seen = {}  # path -> {"print", "since"}: each new file and when it last changed
         self.activity = now  # when a new file last appeared or changed
         self.descs = {}  # id -> description already paid for
@@ -382,6 +383,9 @@ class Watcher:
             return self._status("stopped", "Background renaming is off")
         now = self.clock()
         self._sync(now, s["folders"])
+        moves = {known.key(r["path"]): r["move_to"] for r in s["rows"] if r["rename"]}
+        for k, fw in self.folders.items():
+            fw.move_to = moves.get(k, "")
         wait = s["startup_wait_min"] * 60 if self.startup else 0
         try:  # loops first: no AI, so no key, no credit, a long batch or a renaming problem holds them up
             self.loop_note = self.loops.tick(s, now, self.started + wait, self._renaming)
@@ -710,7 +714,7 @@ class Watcher:
             if not same:  # gone, or changed since it was named (then it is a new file again)
                 del fw.stuck[fid]
                 continue
-            wanted.append({"path": fid[0], "new_name": Path(e["to"]).stem})
+            wanted.append({"path": fid[0], "new_name": Path(e["to"]).stem, "dir": str(Path(e["to"]).parent)})
             ids[fid[0]] = fid
         if not wanted:
             return
@@ -720,7 +724,8 @@ class Watcher:
             fid = ids[old]
             del fw.stuck[fid]
             fw.descs.pop(fid, None)
-            fw.remember([(new, fid[1])])
+            if _stays(fw, new):
+                fw.remember([(new, fid[1])])
             log("Renamed %s -> %s (after it couldn't be renamed)" % (Path(old).name, Path(new).name))
             self.say("Renamed %s to %s%s: ready for ProPresenter." % (Path(old).name, Path(new).stem, self._where(fw)))
         _note(fw, res["moved"], now)
@@ -747,7 +752,7 @@ class Watcher:
                 fw.descs.pop(f, None)  # changed since it was read: it is read again as a new file
                 continue
             name = "%s %s" % (nums[it["id"]], r["proposed"]) if nums else r["proposed"]
-            wanted.append({"path": it["path"], "new_name": name})
+            wanted.append({"path": it["path"], "new_name": name, "dir": fw.move_to})  # a drop folder's: named and moved on
             planned[it["path"]] = f
         pairs = renamer.plan(wanted)
         res = renamer.apply(pairs)
@@ -769,11 +774,18 @@ class Watcher:
             final = Path(moved.get(path, path))
             if final.is_file():
                 done[f] = final.stem
-        fw.remember((moved.get(p, p), f[1]) for p, f in planned.items() if f in done)
+        # Remembered only where they stay: a file moved on from a drop folder is gone from it, so
+        # the same file dropped there again later is new again and moves on too.
+        fw.remember((moved.get(p, p), f[1]) for p, f in planned.items() if f in done and _stays(fw, moved.get(p, p)))
         for f in done:
             fw.descs.pop(f, None)
             fw.failures.pop(f, None)
         return done
+
+
+def _stays(fw, path):
+    """Whether a renamed file is still in its watched folder (not moved on from a drop folder)."""
+    return known.same_folder(Path(path).parent, fw.path)
 
 
 def _note(fw, moved, now):

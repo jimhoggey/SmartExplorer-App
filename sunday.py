@@ -92,8 +92,11 @@ def _slides(r, since, since_short, problems, live, now):
         return out
     # The second line: what it's doing now, what's in the folder, and why old files weren't named.
     parts = [live["text"]] if live and live.get("text") else []
-    fresh = out.pop("fresh")
-    parts.append(_plural(files, "file") + " here" + (", none new " + since_short if files and not fresh else ""))
+    fresh, left = out.pop("fresh"), out.pop("left")
+    where = " in " + config.folder_name(r["move_to"]) if r["move_to"] else " here"
+    parts.append(_plural(files, "file") + where + (", none new " + since_short if files and not fresh else ""))
+    if left:
+        parts.append("%d left in the drop folder from before it was added" % left)
     added = known.recorded(r["path"])
     if added and added >= since:
         parts.append("added %s: files already in it were left as they are" % _when(added, now))
@@ -102,12 +105,18 @@ def _slides(r, since, since_short, problems, live, now):
 
 
 def _slide_state(r, since, since_short, problems):
+    """A drop folder (move_to) is judged by what reached the folder ProPresenter links: that
+    is where this week's files should be. What waits to be named is in the drop folder."""
     name, path = r["name"], Path(r["path"])
+    shown = Path(r["move_to"]) if r["move_to"] else path
     if not path.is_dir():
         return {"name": name, "state": "bad", "text": "Can't find the folder"}
+    if not shown.is_dir():
+        return {"name": name, "state": "bad", "text": "Can't find %s, where named files go" % shown.name}
     try:
-        files = known.visible(path)
+        dropped = known.visible(path)
         waiting = len(known.new_files(path)) if known.has_record(path) else 0
+        files = known.visible(shown) if shown != path else dropped
     except OSError:
         return {"name": name, "state": "bad", "text": "Can't open the folder"}
     fresh = 0
@@ -116,7 +125,8 @@ def _slide_state(r, since, since_short, problems):
             fresh += arrived(p) >= since
         except OSError:
             pass
-    counts = {"files": len(files), "fresh": fresh}  # for the second line
+    # for the second line; left: a drop folder's files from before it was added, which stay put
+    counts = {"files": len(files), "fresh": fresh, "left": len(dropped) - waiting if shown != path else 0}
     if waiting:
         paused = next((PAUSED[p] for p in PAUSED if p in problems), None)
         text = "%d waiting to be named" % waiting

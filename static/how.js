@@ -138,6 +138,37 @@ function howVideo(r, l, bad) {
   return box;
 }
 
+// Where a slide folder's named files end up, in the ProPresenter column: the folder its smart
+// playlist links. From a drop folder they move there, so ProPresenter never sees a file renamed;
+// named where they are, ProPresenter can lose track of one it saw before it was named.
+function howTarget(r, on, bad) {
+  const dest = cleanFolder(r.move_to || "");
+  const box = hm("div", "hm-videos hm-in pp" + (r.example ? " ghost" : "") + (!r.example && !dest ? " need" : "")
+    + (howSame(bad, dest) ? " bad" : ""), `c3${r.example ? "" : " c2"} ${on}`);
+  const where = make("small", "hm-vfolder", "Smart playlist: " + (r.example ? howName(r) : folderName(dest || r.path)));
+  where.title = dest || r.path;
+  box.append(howLabel(r, "hm-vtitle"), where);
+  if (r.example) return box;
+  const pick = inDialog($("howMsg"), () => howMoveTo(r));
+  if (dest) box.append(linkButton("Change folder", pick));
+  else {
+    box.append(make("small", "hm-hint", "Renamed where it is, so ProPresenter can lose track of a file it saw first."));
+    const b = make("button", "hm-add", "Choose a folder for named files");
+    b.type = "button";
+    b.onclick = pick;
+    box.append(b);
+  }
+  return box;
+}
+
+async function howMoveTo(r) {
+  const path = await howPick();
+  if (!path) return;
+  r.move_to = path;
+  say($("howMsg"), "");
+  renderFolders();
+}
+
 function howAddButton(lane) {
   const b = hm("button", "hm-add", "c1 c2");
   b.type = "button";
@@ -161,16 +192,16 @@ function howDraw(bad) {
   // Each place has its own colour: Google Drive blue, Smart Explorer purple, ProPresenter green.
   const from = at(make("div", "hm-col drive"), 1, 2), to = at(make("div", "hm-col"), 5, 2);
   for (const r of l.slides) {
-    const on = r === l.slide ? "new swap both" : "", pp = hm("div", "hm-chip hm-in pp" + (r.example ? " ghost" : ""), `c3 ${on}`);
+    const on = r === l.slide ? "new swap both" : "";
     from.append(howFolder(r, "slide", `c1 ${on}`, bad));
-    pp.append(howLabel(r, ""));
-    if (!r.example) pp.append(howPath(r.path));
-    to.append(pp);
+    to.append(howTarget(r, on, bad));
   }
   from.append(howAddButton("slide"));
+  const real = l.slides.filter((r) => !r.example), moving = real.filter((r) => cleanFolder(r.move_to || "")).length;
   const names = at(hm("div", "hm-box se", "c2 new swap both"), 3, 2);
   names.append(make("b", "", "Names each new file"), make("span", "", "IMG_2231.png becomes Welcome Home.png"),
-    make("span", "", "It stays in the same folder"));
+    make("span", "", !real.length || moving === real.length ? "Then moves it to a different folder"
+      : moving ? "Moves it on, where a folder is chosen" : "It stays in the same folder"));
   grid.append(from, names, to);
 
   // Loop folders: two steps, because the video ends up in another folder.
@@ -212,7 +243,7 @@ async function howAdd(lane) {
     if (watchRows.length >= MAX_FOLDERS) throw new Error(`Smart Explorer can watch up to ${MAX_FOLDERS} folders.`);
     const outs = new Map(watchRows.filter((r) => r.render && cleanFolder(r.output)).map((r) => [folderKey(r.output), cleanFolder(r.output)]));
     row = { path, name: folderName(path), rename: false, render: false, output: outs.size === 1 ? [...outs.values()][0] : "",
-      weekly: true };
+      weekly: true, move_to: "" };
     watchRows.push(row);
   }
   row[lane === "loop" ? "render" : "rename"] = true;
@@ -236,16 +267,21 @@ function howEither(names) {
 
 // What one of the office's buttons says.
 function howJob(key, l) {
-  const a = howName(l.slide), b = howName(l.loop);
+  // The folders the office sees in Drive: where it drops a file, and (from a drop folder) where the named one lands.
+  const a = howName(l.slide), moved = l.slide.example || cleanFolder(l.slide.move_to || "");
+  const drop = l.slide.example ? `${a} - drop here` : folderName(l.slide.path);
+  const ready = l.slide.example ? a : moved ? folderName(l.slide.move_to) : drop;
+  const loopDrop = folderName(l.loop.path);
   return {
-    new: `Drop it in ${a} in Google Drive. Smart Explorer names it, and it shows up in the ${a} playlist, ready for RunsheetPilot.`,
-    swap: `Delete the old file from ${a} and drop the new one in. It gets a proper name like any new file, and the old one leaves the playlist. Removing one? Just delete it.`,
-    both: `Drop it in both ${a} and ${b}. The copy in ${a} gets named, and the copy in ${b} goes into its video.`,
-    loop: `It isn't an announcement, it's for the loop: drop it in ${howEither(l.loops.map(howName))}, and delete it when it's finished with. The video is remade by itself, never during service times.`,
+    new: `Drop it in ${drop} in Google Drive. Smart Explorer names it${moved ? ` and moves it to ${ready}` : ""}, and it shows up in the ${a} playlist, ready for RunsheetPilot.`,
+    swap: `Delete the old file from ${ready} and drop the new one in ${drop}. It gets a proper name like any new file, and the old one leaves the playlist. Removing one? Just delete it from ${ready}.`,
+    both: `Drop it in both ${drop} and ${loopDrop}. The copy in ${drop} gets named${moved ? ` and moves to ${ready}` : ""}, and the copy in ${loopDrop} goes into its video.`,
+    loop: `It isn't an announcement, it's for the loop: drop it in ${howEither(l.loops.map((r) => folderName(r.path)))}, and delete it when it's finished with. The video is remade by itself, never during service times.`,
   }[key];
 }
 
-// The folders ProPresenter links to: the slide folders, and where the videos go. Never a loop's own folder.
+// The folders ProPresenter links to: where named slides end up, and where the videos go. Never
+// a drop folder or a loop's own folder.
 function howPlaylists(l) {
   const list = make("ul", "how-paths");
   const add = (name, path) => {
@@ -254,7 +290,7 @@ function howPlaylists(l) {
     if (path) li.append(make("small", "", path));
     list.appendChild(li);
   };
-  l.slides.forEach((r) => add(howName(r), !r.example && r.path));
+  l.slides.forEach((r) => add(howName(r), !r.example && (cleanFolder(r.move_to || "") || r.path)));
   l.outputs.filter((o) => o.path).forEach((o) => add(folderName(o.path), !o.rows[0].example && o.path));
   return list;
 }
@@ -265,12 +301,12 @@ function howSteps(key, l) {
     return [`Click the Google Drive icon ${HOW_MAC ? "in the menu bar" : "near the clock"}, then the gear, then Preferences.`,
       "Click My Computer, then Add folder, and pick the folder.",
       "Tick Sync with Google Drive and confirm.",
-      "Do this for every folder in the Google Drive column. A folder already in My Drive needs none of this.",
+      "Do this for every folder in the Google Drive column, and for the folders named slides move to, so the office can delete old ones. A folder already in My Drive needs none of this.",
       "Don't sync the folder the videos go to: it stays on this computer."];
   }
   if (key === "c2") {
     return [...(status.has_key ? [] : ["Paste your OpenRouter key at the top of Settings and click Test key. Naming needs it; videos don't."]),
-      "Slide folders: click + Add a folder in the top row.",
+      "Slide folders: click + Add a folder in the top row and pick the drop folder, the one the office drops files in. Then choose a folder for named files in the ProPresenter column: the one its smart playlist links.",
       "Loop folders: click + Add a folder in the bottom row, then Choose a folder for this video in the ProPresenter column: one outside Google Drive.",
       "Type over a name to change it. A loop's name is its video's name, which RunsheetPilot looks for.",
       "Tick Watch these folders by itself, then click Save.",
@@ -279,7 +315,8 @@ function howSteps(key, l) {
   const steps = ["Do this outside a service: clicking an item in the Media Bin can put it live.",
     "In ProPresenter's Media Bin, click + at the lower left, then click New Smart Playlist.",
     ["Choose the folder. Do this once for each:", howPlaylists(l)]];
-  if (!l.loops[0].example) steps.push(`Don't link ${l.loops.map((r) => folderName(r.path)).join(" or ")}: only the folder their videos go to.`);
+  const drops = [...l.slides.filter((r) => !r.example && cleanFolder(r.move_to || "")), ...l.loops.filter((r) => !r.example)];
+  if (drops.length) steps.push(`Don't link ${drops.map((r) => folderName(r.path)).join(" or ")}: only the folders named files and videos go to.`);
   steps.push("RunsheetPilot finds these playlists by itself.");
   return steps;
 }

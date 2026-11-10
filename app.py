@@ -337,6 +337,16 @@ def _row_error(rows, enabled):
         name, out = r["name"], r["output"]
         if not r["rename"] and not r["render"]:
             return "Tick Rename new files or Render into video for %s, or remove it." % name, r["path"]
+        dest = r["move_to"] if r["rename"] else ""  # a drop folder's: where named files go
+        if dest and config.folder_key(dest) == config.folder_key(r["path"]):
+            return ("Choose a different folder for %s's named files, or none to name them where they are." % name,
+                    r["path"])
+        if dest and any(_inside(dest, o["path"]) for o in rows):
+            return ("Move %s's named files to a folder Smart Explorer doesn't watch: there they'd be named again."
+                    % name), r["path"]
+        if dest and enabled and (not _is_folder(dest) or not _writable(dest)):
+            return ("Can't move files into %s. Check the folder is there and can be written to."
+                    % config.folder_name(dest)), r["path"]
         if not r["render"]:
             continue
         if not out:

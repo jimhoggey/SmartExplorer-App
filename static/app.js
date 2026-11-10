@@ -702,7 +702,7 @@ const linkButton = (text, onclick) => {
 };
 
 // What Smart Explorer does with a folder, in a few words.
-const folderJob = (row) => [row.rename && "Renames new files",
+const folderJob = (row) => [row.rename && (row.move_to ? `Names new files, then moves them to ${folderName(row.move_to)}` : "Renames new files"),
   row.render && `Video: ${row.name.trim() || folderName(row.path)}.mp4${row.output ? " in " + folderName(row.output) : ""}`]
   .filter(Boolean).join(" · ");
 
@@ -784,7 +784,7 @@ function watchDraft() {
   return {  // rows as the server tidies them, so an unchanged table compares equal
     enabled: els.wOn.checked,
     rows: watchRows.map((r) => ({ path: r.path, name: r.name.trim() || folderName(r.path), rename: r.rename,
-      render: r.render, output: cleanFolder(r.output), weekly: r.weekly !== false })),
+      render: r.render, output: cleanFolder(r.output), weekly: r.weekly !== false, move_to: cleanFolder(r.move_to || "") })),
     service_times: watchTimes.map((t) => ({ day: t.day, from: t.from, to: t.to })),
     profile: els.wProfile.value,
     startup_wait_min: Math.round(Number(els.wWait.value) || 0), monthly_limit_usd: Number(els.wLimit.value) || 0,

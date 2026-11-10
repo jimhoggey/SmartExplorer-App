@@ -7,8 +7,10 @@ def test_a_folder_list_from_0_7_becomes_rows_that_rename():
     config.save(watch={"enabled": True, "folders": ["/x/Sunday Media", "/x/Youth Media"]})
     s = config.watch_settings()
     assert s["rows"] == [
-        {"path": "/x/Sunday Media", "name": "Sunday Media", "rename": True, "render": False, "output": "", "weekly": True},
-        {"path": "/x/Youth Media", "name": "Youth Media", "rename": True, "render": False, "output": "", "weekly": True}]
+        {"path": "/x/Sunday Media", "name": "Sunday Media", "rename": True, "render": False, "output": "", "weekly": True,
+         "move_to": ""},
+        {"path": "/x/Youth Media", "name": "Youth Media", "rename": True, "render": False, "output": "", "weekly": True,
+         "move_to": ""}]
     assert s["folders"] == ["/x/Sunday Media", "/x/Youth Media"] and s["loops"] == []
     config.save(watch={"folder": "C:\\Media\\Sunday\\"})
     assert config.watch_settings()["rows"][0]["name"] == "Sunday"
@@ -21,7 +23,7 @@ def test_rows_are_tidied_each_folder_once_and_at_most_ten():
                        + ["/x/%d" % i for i in range(20)]})
     s = config.watch_settings()
     assert s["rows"][0] == {"path": "G:\\My Drive\\PreServiceLoop", "name": "Pre-service loop", "rename": False,
-                            "render": True, "output": "C:\\Loops", "weekly": True}
+                            "render": True, "output": "C:\\Loops", "weekly": True, "move_to": ""}
     assert [r["path"] for r in s["rows"]][:2] == ["G:\\My Drive\\PreServiceLoop", "/x/Sunday"]
     assert len(s["rows"]) == config.MAX_FOLDERS
     assert s["loops"] == [s["rows"][0]] and "G:\\My Drive\\PreServiceLoop" not in s["folders"]

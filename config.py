@@ -126,7 +126,9 @@ def row(raw):
             "render": raw["render"] if isinstance(raw.get("render"), bool) else False,
             "output": clean_folder(raw.get("output")),
             # the Sunday check expects something new in it every week (Service slides may not)
-            "weekly": raw["weekly"] if isinstance(raw.get("weekly"), bool) else True}
+            "weekly": raw["weekly"] if isinstance(raw.get("weekly"), bool) else True,
+            # a drop folder's named files move here, the folder ProPresenter links ("": named where they are)
+            "move_to": clean_folder(raw.get("move_to"))}
 
 
 def rows(raw):
