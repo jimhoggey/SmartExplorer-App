@@ -29,7 +29,8 @@ def test_a_loop_row_is_saved_with_its_service_times(client, watcher, loop, tmp_p
     media.mkdir()
     times = [{"day": 6, "from": "08:00", "to": "15:00"}]
     w = save(client, [loop, str(media)], service_times=times).get_json()
-    assert w["settings"]["loops"] == [loop] and w["settings"]["folders"] == [str(media)]
+    assert w["settings"]["loops"] == [dict(loop, weekly=True)] and w["settings"]["folders"] == [str(media)]
+    assert w["sunday"]["state"] != "off"  # watching: the start screen's Sunday check has something to say
     assert w["settings"]["service_times"] == times and watcher["spawn"] == 1
     assert w["loops"] == {config.folder_key(loop["path"]): {"state": "none", "text": "Not rendered yet"}}
     saved = config.load()["watch"]

@@ -21,6 +21,7 @@ import namer
 import prep
 import renamer
 import scanner
+import sunday
 import updater
 import watch
 from version import APP_VERSION
@@ -257,13 +258,21 @@ def spawn_watcher():
 
 def watch_state():
     running, settings, st = watch.running(), config.watch_settings(), watch.read_status()
-    until = config.service_until(settings["service_times"], time.time())
-    return {"settings": settings, "running": running, "status": st,
-            "starting": not running and time.time() - SPAWNED["at"] < STARTING,
+    now = time.time()
+    until = config.service_until(settings["service_times"], now)
+    starting = not running and now - SPAWNED["at"] < STARTING
+    lines = loopwatch.lines(settings, st, running)
+    try:
+        week = sunday.check(settings, st, running, starting, lines, loopwatch.records(), now)
+    except Exception as e:  # never a tick it can't back up, and never a broken Settings
+        app.logger.warning("Sunday check failed: %r", e)
+        week = {"state": "unknown", "headline": "Can't tell right now", "since": "", "rows": [], "latest": []}
+    return {"settings": settings, "running": running, "status": st, "starting": starting,
             "spent_month": round(watch.spent_month(), 6), "can_autostart": autostart.available(),
             "autostart_on": autostart.enabled(),  # the start-up entry really exists, not just the setting
-            "loops": loopwatch.lines(settings, st, running),  # each Render into video row's line
-            "service_until": loopwatch._clock(until) if until else None}
+            "loops": lines,  # each Render into video row's line
+            "service_until": loopwatch._clock(until) if until else None,
+            "sunday": week}  # the start screen's "has it done its job this week?"
 
 
 def _is_folder(f):

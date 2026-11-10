@@ -27,6 +27,7 @@ import notify
 import prep
 import renamer
 import scanner
+import sunday
 
 POLL = 5  # seconds between looks at the folders
 SETTLE = 10  # a file is ready once its size and modified time have held this long
@@ -686,6 +687,7 @@ class Watcher:
             fw.remember([(new, fid[1])])
             log("Renamed %s -> %s (after it couldn't be renamed)" % (Path(old).name, Path(new).name))
             self.say("Renamed %s to %s%s: ready for ProPresenter." % (Path(old).name, Path(new).stem, self._where(fw)))
+        _note(fw, res["moved"], now)
         for x in res["failed"]:
             fw.stuck[ids[x["path"]]].update(why=x["why"], in_use=x["in_use"], next=now + RENAME_AGAIN)
         planned = {old for old, _ in pairs}
@@ -717,6 +719,7 @@ class Watcher:
         stuck = {x["path"]: x for x in res["failed"]}
         for old, new in moved.items():
             log("Renamed %s -> %s" % (Path(old).name, Path(new).name))
+        _note(fw, moved.items(), now)
         if res.get("error"):
             log(res["error"])
         done = {}
@@ -735,6 +738,14 @@ class Watcher:
             fw.descs.pop(f, None)
             fw.failures.pop(f, None)
         return done
+
+
+def _note(fw, moved, now):
+    """Keep what was renamed for the Sunday check's Latest list. Only a record: it can't stop renaming."""
+    try:
+        sunday.note_named(fw.path, [(Path(old).name, Path(new).stem) for old, new in moved], now)
+    except OSError as e:
+        log("Could not note what was renamed: %s" % e)
 
 
 def _lock(f):

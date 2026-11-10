@@ -83,6 +83,8 @@ It works while the computer is awake: a sleeping computer renames nothing until 
 
 For the people at the ProPresenter computer: [docs/background-renaming.md](docs/background-renaming.md).
 
+**Is it ready for Sunday?** While watching is on, the start screen shows one line per folder: a tick when something new arrived since the end of the last service time (or in the last 7 days) and nothing is waiting to be named, or a loop's video was made this week; amber when nothing new came (untick *Changes every week* on the map for a folder that stays the same); red for a problem. **Ready for Sunday** means every line has a tick. It says when it can't tell, and it checks that files arrived and were named, not that they're the right ones. Design: [docs/superpowers/specs/2026-11-10-sunday-check-design.md](docs/superpowers/specs/2026-11-10-sunday-check-design.md).
+
 The folders map draws all of this as one flow from your own folders (dashed examples where a row has none yet): the office drops files in Google Drive, Smart Explorer names them or makes a video, ProPresenter's smart playlists show them and RunsheetPilot builds the service from them. Its buttons show what the office does and the set-up steps. *Settings → Folders* lists the folders, with each loop's video and **Render now**. Design: [docs/superpowers/specs/2026-11-09-how-it-works-guide-design.md](docs/superpowers/specs/2026-11-09-how-it-works-guide-design.md).
 
 ## Loop videos (pre-service and post-service loops)

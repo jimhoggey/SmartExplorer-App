@@ -154,6 +154,36 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
 }
 .empty .way { padding: 8px 28px; }
 .empty .way + .way { border-left: 1px solid var(--line); }
+/* The Sunday check, in the first half while watching is on: green, amber and red mean
+   how things stand, and nothing else on the screen uses them. */
+.empty .way.watching { text-align: left; }
+.sunday { max-width: 520px; margin: 0 auto; }
+.way.watching #autoOpen { margin-top: 14px; }
+.sun-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.sun-head b { display: block; font-size: 16px; }
+.sun-head small { display: block; font-size: 12.5px; color: var(--mute); }
+.sun-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--surface-2); color: var(--mute); }
+.sun-badge svg, .sun-rows svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sun-badge svg { width: 22px; height: 22px; }
+.sunday[data-state="ok"] .sun-badge { background: var(--ok-soft); color: var(--ok); }
+.sunday[data-state="warn"] .sun-badge { background: #fffaeb; color: #b54708; }
+.sunday[data-state="bad"] .sun-badge { background: var(--err-soft); color: var(--err); }
+.sun-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.sun-rows li { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.sun-rows svg { flex: none; width: 17px; height: 17px; align-self: center; color: var(--mute); }
+.sun-rows b { flex: none; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sun-rows span { flex: 1; color: var(--mute); }
+.sun-rows .sun-ok svg { color: var(--ok); }
+.sun-rows .sun-warn svg, .sun-rows .sun-warn span { color: #b54708; }
+.sun-rows .sun-bad svg, .sun-rows .sun-bad span { color: var(--err); }
+.sun-rows .sun-work svg { color: var(--accent); }
+.sun-latest { margin-top: 12px; font-size: 12.5px; line-height: 1.7; color: var(--mute); }
+.sun-latest:empty { display: none; }
+.sun-label { font-weight: 600; }
+.sun-when { display: inline-block; min-width: 88px; }
+.sun-latest code { font-family: var(--mono); font-size: 11.5px; }
+.sun-latest b { color: var(--ink-2); }
+.empty .sun-note { max-width: none; margin: 10px 0 0; font-size: 12px; color: var(--dim); }
 @media (max-width: 760px) {
   .empty { grid-template-columns: 1fr; }
   .empty .way + .way { margin-top: 24px; padding-top: 32px; border-left: 0; border-top: 1px solid var(--line); }
@@ -426,6 +456,11 @@ dialog#how { width: min(1140px, 96vw); }
 }
 .hm-chip > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 #howMap .hm-chip small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 1px; font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.hm-col > .hm-chip:not(.ghost) { min-height: 74px; }  /* a slide folder's two ends line up */
+#howMap label.hm-weekly {
+  display: flex; align-items: center; gap: 5px; margin: 2px 0 0; font-size: 11.5px; font-weight: 400; color: var(--mute); cursor: pointer;
+}
+#howMap .hm-weekly input { display: inline-block; width: 13px; height: 13px; margin: 0; padding: 0; box-shadow: none; accent-color: var(--accent); }
 .hm-chip.ghost { min-height: 34px; align-items: center; border-style: dashed; background: none; color: var(--dim); }
 .hm-top { display: flex; align-items: center; gap: 2px; margin-left: -4px; }
 #howMap .hm-top input {
@@ -456,12 +491,12 @@ dialog#how { width: min(1140px, 96vw); }
   padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
   font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
-/* Teal stays in its own folder; coral is the video that goes somewhere else. */
-.hm-grid .teal { border-color: #0f6e56; background: #e1f5ee; color: #0f6e56; }
-.hm-grid .teal b { color: #085041; }
-.hm-grid .coral { border-color: #993c1d; background: #faece7; color: #993c1d; }
-.hm-grid .coral b { color: #712b13; }
-.hm-grid .ghost.teal, .hm-grid .ghost.coral { border-style: dashed; background: none; }
+/* The map's boxes are all neutral: green, amber and red mean how things stand (the Sunday
+   check), never what kind of folder it is. Orange here read as "something's wrong". */
+.hm-grid .teal, .hm-grid .coral { border-color: var(--line-2); background: var(--surface); color: var(--mute); }
+.hm-grid .teal b, .hm-grid .coral b { color: var(--ink); }
+.hm-grid .ghost.teal, .hm-grid .ghost.coral { border-style: dashed; background: none; color: var(--dim); }
+.hm-grid .ghost.teal b, .hm-grid .ghost.coral b { color: var(--dim); }
 .hm-grid .hm-videos.need { border-style: dashed; background: var(--surface); }
 .hm-grid .hm-chip.bad, .hm-grid .hm-videos.bad { border-color: var(--err); background: var(--err-soft); }
 .how-label { margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--mute); }

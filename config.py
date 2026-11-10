@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import re
@@ -123,7 +124,9 @@ def row(raw):
     return {"path": path, "name": name or folder_name(path),
             "rename": raw["rename"] if isinstance(raw.get("rename"), bool) else True,
             "render": raw["render"] if isinstance(raw.get("render"), bool) else False,
-            "output": clean_folder(raw.get("output"))}
+            "output": clean_folder(raw.get("output")),
+            # the Sunday check expects something new in it every week (Service slides may not)
+            "weekly": raw["weekly"] if isinstance(raw.get("weekly"), bool) else True}
 
 
 def rows(raw):
@@ -162,6 +165,21 @@ def service_until(times, t):
         if st["day"] == lt.tm_wday and _minutes(st["from"]) <= now < _minutes(st["to"]):
             return t - now * 60 - lt.tm_sec + _minutes(st["to"]) * 60
     return None
+
+
+def last_service_end(times, t):
+    """When the last service time ended at or before moment `t` (seconds since the epoch),
+    or None with no service times. During a service, that is the one before."""
+    today, best = datetime.date.fromtimestamp(t), None
+    for back in range(8):
+        d = today - datetime.timedelta(days=back)
+        for st in times:
+            if st["day"] == d.weekday():
+                h, m = divmod(_minutes(st["to"]), 60)
+                end = time.mktime((d.year, d.month, d.day, h, m, 0, 0, 0, -1))
+                if end <= t and (best is None or end > best):
+                    best = end
+    return best
 
 
 def watch_settings():

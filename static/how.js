@@ -92,7 +92,13 @@ function howFolder(r, lane, on, bad) {
     renderFolders();
   };
   top.append(name, x);
-  c.append(top, howPath(r.path));
+  // The Sunday check expects something new in it every week, unless this is unticked.
+  const weekly = make("label", "hm-weekly"), tick = make("input");
+  tick.type = "checkbox";
+  tick.checked = r.weekly !== false;
+  tick.onchange = () => { r.weekly = tick.checked; };
+  weekly.append(tick, make("span", "", "Changes every week"));
+  c.append(top, howPath(r.path), weekly);
   return c;
 }
 
@@ -204,7 +210,8 @@ async function howAdd(lane) {
   if (!row) {
     if (watchRows.length >= MAX_FOLDERS) throw new Error(`Smart Explorer can watch up to ${MAX_FOLDERS} folders.`);
     const outs = new Map(watchRows.filter((r) => r.render && cleanFolder(r.output)).map((r) => [folderKey(r.output), cleanFolder(r.output)]));
-    row = { path, name: folderName(path), rename: false, render: false, output: outs.size === 1 ? [...outs.values()][0] : "" };
+    row = { path, name: folderName(path), rename: false, render: false, output: outs.size === 1 ? [...outs.values()][0] : "",
+      weekly: true };
     watchRows.push(row);
   }
   row[lane === "loop" ? "render" : "rename"] = true;

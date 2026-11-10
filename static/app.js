@@ -621,6 +621,7 @@ function showWatch(w) {
   els.watchRetry.hidden = !on || !w.running || !((w.status || {}).stuck > 0);  // files named but in use
   els.wStatus.textContent = on ? watchLine(w) : "";
   $("autoOpen").textContent = (w.settings.rows || []).length ? "Change folders" : "Set up folders";
+  showSunday(w);  // the start screen's "has it done its job this week?"
   if (watchFilled) {
     showAutostart();  // what the start-up note says follows what is really there
     showLines();  // and each loop's line what the background copy is doing
@@ -782,7 +783,7 @@ function watchDraft() {
   return {  // rows as the server tidies them, so an unchanged table compares equal
     enabled: els.wOn.checked,
     rows: watchRows.map((r) => ({ path: r.path, name: r.name.trim() || folderName(r.path), rename: r.rename,
-      render: r.render, output: cleanFolder(r.output) })),
+      render: r.render, output: cleanFolder(r.output), weekly: r.weekly !== false })),
     service_times: watchTimes.map((t) => ({ day: t.day, from: t.from, to: t.to })),
     profile: els.wProfile.value,
     startup_wait_min: Math.round(Number(els.wWait.value) || 0), monthly_limit_usd: Number(els.wLimit.value) || 0,
