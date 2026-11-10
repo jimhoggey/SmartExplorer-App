@@ -147,9 +147,16 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
 @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(560%); } }
 
 /* ---------- empty: a big, obvious place to start ---------- */
+/* Two ways in: watched folders rename by themselves; a dropped folder is renamed now. */
 .empty {
-  margin-top: 16px; padding: 56px 24px; text-align: center;
+  display: grid; grid-template-columns: 1fr 1fr; margin-top: 16px; padding: 40px 12px; text-align: center;
   border: 2px dashed var(--line-2); border-radius: 16px; background: var(--surface);
+}
+.empty .way { padding: 8px 28px; }
+.empty .way + .way { border-left: 1px solid var(--line); }
+@media (max-width: 760px) {
+  .empty { grid-template-columns: 1fr; }
+  .empty .way + .way { margin-top: 24px; padding-top: 32px; border-left: 0; border-top: 1px solid var(--line); }
 }
 .empty-icon {
   display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px;
@@ -343,25 +350,14 @@ dialog input.bad { border-color: var(--err); box-shadow: 0 0 0 3px rgba(217, 45,
   padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
-.keyrow #wAdd { margin-left: -2px; }
 
-/* The Folders table: one row per folder, a loop's save-to folder and its line under it */
+/* The folders in Settings, to read (the folders map changes them); a loop's line under it */
 dialog#settings { width: min(640px, 94vw); }
-.wlist li.wrow { display: grid; gap: 6px; align-items: stretch; padding: 10px 12px; }
-.wrow .wtop { display: flex; align-items: center; gap: 10px; }
-.wrow input.wname { flex: 1; min-width: 0; padding: 5px 8px; font-weight: 600; font-size: 14px; box-shadow: none; }
+.wlist li.wrow { display: grid; gap: 4px; align-items: stretch; padding: 10px 12px; }
+.wrow .wtop { display: flex; align-items: baseline; gap: 10px; }
+.wrow .wname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.wrow .wjob { font-size: 12.5px; font-weight: 400; color: var(--mute); text-align: right; }
 .wrow small.wpath { margin: -2px 0 0 1px; }
-.wrow .wticks { display: flex; flex-wrap: wrap; gap: 6px 20px; }
-.wrow label.wtick {
-  display: flex; align-items: center; gap: 8px; margin: 0; padding: 2px 0;
-  font-size: 13px; font-weight: 600; color: var(--ink-2); cursor: pointer;
-}
-.wrow label.wtick input { width: 16px; height: 16px; margin: 0; padding: 0; box-shadow: none; accent-color: var(--accent); }
-.wrow .wout { padding: 8px 0 0 24px; border-top: 1px dashed var(--line); }
-.wrow .wout[hidden] { display: none; }
-.wrow .wdest { font-size: 12.5px; font-weight: 600; color: var(--mute); }
-.wrow .wdest input { padding: 6px 10px; font-family: var(--mono); font-size: 12.5px; font-weight: 400; box-shadow: none; }
-.wrow .wdest button { padding: 6px 12px; }
 .wrow .wline { margin: 6px 0 0; font-size: 12.5px; font-weight: 400; color: var(--mute); }
 .wrow .wline.err { color: var(--err); }
 .wtimes li.wtime { gap: 8px; padding: 6px 10px; font-weight: 400; font-size: 13px; color: var(--mute); }
@@ -375,34 +371,99 @@ dialog#settings { width: min(640px, 94vw); }
 #wAddTime { font-size: 13px; }
 #updateMsg:empty { display: none; }
 
-/* ---------- how it works ---------- */
-/* The diagram and its buttons and steps side by side, so a click never moves the diagram
-   out of view. In a narrow window they stack, and a long table scrolls. */
-dialog#how { width: min(1120px, 96vw); }
+/* ---------- folders map ---------- */
+/* The map beside its buttons and steps, each scrolling by itself, so a click never moves the
+   map out of view. In a narrow window they stack. */
+dialog#how { width: min(1140px, 96vw); }
 #howBody {
-  flex: 1; min-height: min(600px, calc(92vh - 176px)); overflow: hidden;  /* the same height whichever steps show */
-  display: grid; grid-template-columns: minmax(0, 1fr) clamp(260px, 30vw, 340px); gap: 24px; align-items: start;
+  flex: 1; min-height: min(600px, calc(92vh - 200px)); overflow: hidden;  /* the same height whichever steps show */
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(250px, 26vw, 310px); gap: 24px; align-items: start;
 }
-#howMap, .how-rail { max-height: calc(92vh - 176px); overflow: auto; }  /* each scrolls by itself: steps never move the diagram */
-@media (max-width: 760px) {
+#howMap, .how-rail { max-height: calc(92vh - 200px); overflow: auto; }
+@media (max-width: 1060px) {
   #howBody { display: block; overflow: auto; }
   #howMap, .how-rail { max-height: none; overflow: visible; }
+  .how-rail { margin-top: 14px; }
 }
-#howMap svg { display: block; width: 100%; }
+#howMap { --edge: #667085; --reach: 36px; padding: 2px; font-size: 12.5px; }
 #howMap [data-on] { transition: opacity .2s; }
 #howMap .how-dim { opacity: .18; }
-.how-t { font: 600 14px var(--ui); fill: var(--ink); }
-.how-s { font: 400 12px var(--ui); fill: var(--mute); }
-.how-box { fill: var(--surface-2); stroke: var(--line-2); stroke-width: .75; }
-.how-zone, .how-empty { fill: none; stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 4 4; }
-.how-edge { stroke: #667085; stroke-width: 1.5; fill: none; }
+#howMap small { display: block; min-height: 0; margin: 0; font-size: 11.5px; font-weight: 400; color: inherit; }
+.hm-band {
+  display: flex; align-items: center; gap: 18px; padding: 8px 16px;
+  border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface-2); color: var(--mute);
+}
+.hm-band > b { flex: none; font-size: 14px; color: var(--ink); }
+.hm-band span span { display: block; }
+/* Arrows: a line and a chevron. A box draws the arrow it sends (hm-out) or the one it gets (hm-in). */
+.hm-down { position: relative; height: 22px; }
+.hm-down::after { content: ""; position: absolute; left: 89px; top: 3px; bottom: 4px; border-left: 1.5px solid var(--edge); }
+.hm-down::before {
+  content: ""; position: absolute; left: 86px; bottom: 5px; width: 6px; height: 6px;
+  border-right: 1.5px solid var(--edge); border-bottom: 1.5px solid var(--edge); transform: rotate(45deg);
+}
+.hm-down.hm-right::after { left: auto; right: 106px; }
+.hm-down.hm-right::before { left: auto; right: 103px; }
+.hm-out::after, .hm-in::after { content: ""; position: absolute; top: 50%; width: calc(var(--reach) - 6px); border-top: 1.5px solid var(--edge); }
+.hm-out::after { left: calc(100% + 2px); }
+.hm-in::after { right: calc(100% + 4px); }
+.hm-out::before, .hm-in::before {
+  content: ""; position: absolute; top: calc(50% - 3px); width: 6px; height: 6px;
+  border-top: 1.5px solid var(--edge); border-right: 1.5px solid var(--edge); transform: rotate(45deg);
+}
+.hm-out::before { left: calc(100% + var(--reach) - 11px); }
+.hm-in::before { left: -11px; }
+.hm-near { --reach: 18px; }
+/* Three places side by side: dashed areas behind the slide row and the loop row. */
+.hm-grid { display: grid; grid-template-columns: 156px 36px minmax(0, 1fr) 36px 190px; row-gap: 12px; padding: 12px; }
+.hm-zone { margin: -12px -10px; border: 1px dashed var(--line-2); border-radius: 12px; pointer-events: none; }
+.hm-head b { display: block; font-size: 14px; color: var(--ink); }
+.hm-head small { color: var(--mute); }
+.hm-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.hm-chip {
+  position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; min-height: 52px;
+  padding: 5px 8px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface-2); color: var(--ink-2);
+}
+.hm-chip > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+#howMap .hm-chip small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 1px; font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.hm-chip.ghost { min-height: 34px; align-items: center; border-style: dashed; background: none; color: var(--dim); }
+.hm-top { display: flex; align-items: center; gap: 2px; margin-left: -4px; }
+#howMap .hm-top input {
+  flex: 1; min-width: 0; margin: 0; padding: 2px 4px; border: 1px solid var(--line); border-radius: 5px;
+  background: var(--surface); box-shadow: none; font: 600 13px var(--ui); color: var(--ink);
+}
+#howMap .hm-top input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.hm-x { flex: none; padding: 0 2px 0 4px; border: 0; background: none; box-shadow: none; color: var(--dim); font-size: 16px; font-weight: 400; line-height: 1; }
+.hm-x:hover:not(:disabled) { background: none; border: 0; color: var(--err); }
+.hm-add {
+  min-height: 34px; padding: 6px 8px; border: 1px dashed var(--accent); border-radius: 7px;
+  background: var(--accent-soft); box-shadow: none; color: var(--accent); font-size: 12.5px;
+}
+.hm-add:hover:not(:disabled) { background: #e0e7ff; border-color: var(--accent); color: var(--accent-hover); }
+.hm-box {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 100px; padding: 12px; border: 1px solid; border-radius: 8px; text-align: center;
+}
+.hm-box b { font-size: 14px; }
+.hm-steps { display: flex; gap: 18px; }
+.hm-steps .hm-box { flex: 1; min-width: 0; }
+.hm-videos { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 10px 10px; border: 1px solid; border-radius: 8px; }
+.hm-vhead { display: flex; align-items: baseline; gap: 6px; }
+.hm-vhead b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+#howMap .hm-vpath { margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; }
+.hm-vname { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+#howMap button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
 /* Teal stays in its own folder; coral is the video that goes somewhere else. */
-.how-name rect { fill: #e1f5ee; stroke: #0f6e56; stroke-width: .75; }
-.how-name .how-t { fill: #085041; }
-.how-name .how-s { fill: #0f6e56; }
-.how-video rect { fill: #faece7; stroke: #993c1d; stroke-width: .75; }
-.how-video .how-t { fill: #712b13; }
-.how-video .how-s { fill: #993c1d; }
+.hm-grid .teal { border-color: #0f6e56; background: #e1f5ee; color: #0f6e56; }
+.hm-grid .teal b { color: #085041; }
+.hm-grid .coral { border-color: #993c1d; background: #faece7; color: #993c1d; }
+.hm-grid .coral b { color: #712b13; }
+.hm-grid .ghost.teal, .hm-grid .ghost.coral { border-style: dashed; background: none; }
+.hm-grid .hm-videos.need { border-style: dashed; background: var(--surface); }
+.hm-grid .hm-chip.bad, .hm-grid .hm-videos.bad { border-color: var(--err); background: var(--err-soft); }
 .how-label { margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--mute); }
 .how-rail .how-label:first-child { margin-top: 0; }
 .how-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -419,7 +480,9 @@ dialog#how { width: min(1120px, 96vw); }
 .how-paths { list-style: none; margin: 6px 0 4px; padding: 0; -webkit-user-select: text; user-select: text; }
 .how-paths b { font-weight: 600; }
 .how-paths small { display: block; min-height: 0; margin: 0 0 4px; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
-.how-actions { margin-top: 14px; }
+#howMsg { margin: 8px 0 0; }
+.how-actions { margin-top: 6px; align-items: center; }
+.how-actions label.how-on { margin: 0; padding: 0; gap: 8px; align-items: center; }
 
 /* ---------- update banner ---------- */
 .update {

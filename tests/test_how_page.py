@@ -19,7 +19,11 @@ def test_settings_opens_the_guide():
     assert page.index('id="settings"') < page.index('id="howOpen"') < page.index('<dialog id="how"')
 
 
-def test_every_id_the_guide_asks_for_is_on_the_page():
+def test_every_id_the_scripts_ask_for_is_on_the_page():
     ids = set(re.findall(r'\bid="(\w+)"', (STATIC / "index.html").read_text("utf-8")))
-    wanted = set(re.findall(r'\$\("(\w+)"\)', (STATIC / "how.js").read_text("utf-8")))
-    assert wanted and wanted <= ids, wanted - ids
+    app = (STATIC / "app.js").read_text("utf-8")
+    listed = re.search(r"const els = \[(.*?)\]", app, re.S).group(1)
+    wanted = set(re.findall(r'"(\w+)"', listed))
+    for script in ("app.js", "how.js"):
+        wanted |= set(re.findall(r'\$\("(\w+)"\)', (STATIC / script).read_text("utf-8")))
+    assert len(wanted) > 50 and wanted <= ids, wanted - ids

@@ -11,8 +11,22 @@ Smart Explorer sees, so what RunsheetPilot sees, so what ProPresenter uses.
 
 ## What it is
 
-- A **Show me** button in Settings → Folders opens a dialog on top of Settings. Settings stays open with its
-  unsaved changes, and the diagram shows them. It changes no settings and has no back end (`static/how.js`).
+**Changed 10 Nov 2026 (Fynn, after trying it):** the map is now where folders are set up. It replaces the Folders
+table and its path box: "I should be able to just open up the graph and add folders there". Each folder also gets
+a name of its own, which needn't match the folder's ("Each folder's name may not be the name in the file path").
+
+- **Set up folders** on the start screen, or *Settings → Folders → Open*, opens the **folders map** on top of
+  Settings, which stays open. **+ Add a folder** in a row of the Google Drive column adds a slide folder (top row,
+  Rename new files) or a loop folder (bottom row, Render into video); its name box sets the row's name (a loop's
+  is its video's name); **×** takes it out of that row. **Choose** in the ProPresenter column picks where a group
+  of videos goes; a new loop starts with the folder the other videos go to. **Save** saves them as Settings' Save
+  does (the same checks; a folder Save rejects is marked red), with *Watch these folders by itself* beside it.
+  **Cancel** or Escape puts back what was there. Drawn in HTML, not SVG, so names are real text boxes.
+- *Settings → Folders* keeps a list to read: each folder's name, what it does, and a loop's line with Render now.
+- The start screen shows both ways in: **Rename by itself** (watched folders, the main use) and **Rename a
+  folder now** (drop or choose a folder in the window).
+- There is no switch for a folder that is both renamed and a loop: such a row (from before) shows in both rows of
+  the map, and × takes it out of one.
 - **The diagram:** the office at the top, then Google Drive, Smart Explorer and ProPresenter, then RunsheetPilot.
   - Slide folders (Rename new files): one step, "Names each new file", in the same folder, one playlist each.
   - Loop folders (Render into video): two steps, "Makes one video" and "Saves the video" to a different folder,

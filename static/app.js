@@ -3,7 +3,7 @@ const els = ["gear", "next", "pick", "pickEmpty", "folder", "name", "rename", "c
   "profile", "context", "order", "settings", "key", "showkey", "model", "custom", "modelnote", "spend", "keymsg", "test", "cancel", "version",
   "save", "editPrompts", "prompts", "ptabs", "pdesc", "pedit", "pcategories", "preader", "prules", "pfull", "pread", "pname", "pmsg",
   "preset", "pshow", "pcancel", "psave", "update", "updateText", "updateLink", "updateGo", "updateLater",
-  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchRetry", "watchStart", "wOn", "wFields", "wList", "wFolder", "wPick", "wAdd", "wProfile",
+  "checkUpdates", "updateMsg", "watchbar", "watchText", "watchRetry", "watchStart", "wOn", "wFields", "wList", "wProfile",
   "wWait", "wLimit", "wSpent", "wAutoRow", "wAuto", "wAutoNote", "wShowStartup", "wWaitRow", "wStatus", "wLog",
   "wTimes", "wAddTime"]
   .reduce((o, k) => (o[k] = $(k), o), {});
@@ -20,7 +20,6 @@ let lastCost = null, renamedCount = 0;
 // that went into the last Rename, so Undo can put them back as suggestions.
 let namedProfile = null, autoOrder = false, drafts = null;
 const FOLDER_HINT = els.folder.placeholder;
-const EMPTY_TEXT = els.emptyText.textContent;
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -135,11 +134,10 @@ function render() {
 }
 
 function showEmpty(loaded) {
-  els.emptyTitle.textContent = loaded ? "No files Smart Explorer can name in there"
-    : profile === "general" ? "Drop a folder of files here" : "Drop a folder of slides here";
+  els.emptyTitle.textContent = loaded ? "No files Smart Explorer can name in there" : "Rename a folder now";
   els.emptyText.textContent = loaded
     ? "It reads images (PNG, JPEG and more), iPhone photos (HEIC), PDFs and videos (MP4, MOV). Try another folder."
-    : EMPTY_TEXT;
+    : `Drop ${profile === "general" ? "files" : "slides"} here, or choose a folder. Nothing is renamed until you check the names.`;
 }
 
 function refreshCards() {
@@ -622,6 +620,7 @@ function showWatch(w) {
   els.watchStart.hidden = !on || !down;
   els.watchRetry.hidden = !on || !w.running || !((w.status || {}).stuck > 0);  // files named but in use
   els.wStatus.textContent = on ? watchLine(w) : "";
+  $("autoOpen").textContent = (w.settings.rows || []).length ? "Change folders" : "Set up folders";
   if (watchFilled) {
     showAutostart();  // what the start-up note says follows what is really there
     showLines();  // and each loop's line what the background copy is doing
@@ -642,7 +641,6 @@ function fillWatch() {
   els.wOn.checked = s.enabled;
   watchRows = s.rows.map((r) => ({ ...r }));
   watchTimes = s.service_times.map((t) => ({ ...t }));
-  els.wFolder.value = "";
   renderFolders();
   renderTimes();
   els.wProfile.innerHTML = "";
@@ -701,59 +699,35 @@ const linkButton = (text, onclick) => {
   return b;
 };
 
-// One row of the Folders table: its name (the video's name when it renders), its
-// folder, what Smart Explorer does with it and, for a loop, where its video goes.
+// What Smart Explorer does with a folder, in a few words.
+const folderJob = (row) => [row.rename && "Renames new files",
+  row.render && `Video: ${row.name.trim() || folderName(row.path)}.mp4${row.output ? " in " + folderName(row.output) : ""}`]
+  .filter(Boolean).join(" · ");
+
+// One folder in Settings, to read: it is added and changed on the folders map (how.js).
+// A loop shows how its video stands, with Render now.
 function folderRow(row, i, bad) {
-  const li = make("li", "wrow"), top = make("div", "wtop"), name = make("input", "wname");
-  name.type = "text";
-  name.value = row.name;
-  name.spellcheck = false;
-  name.setAttribute("aria-label", "Name for " + folderName(row.path));
-  name.oninput = () => { row.name = name.value; li.classList.remove("bad"); showLines(); };
-  const remove = linkButton("Remove", () => { watchRows.splice(i, 1); renderFolders(); });
-  remove.setAttribute("aria-label", "Stop watching " + folderName(row.path));
-  top.append(name, remove);
-  const path = make("small", "wpath", row.path), ticks = make("div", "wticks"), out = make("div", "wout");
+  const li = make("li", "wrow"), top = make("div", "wtop");
+  top.append(make("b", "wname", row.name.trim() || folderName(row.path)), make("span", "wjob", folderJob(row)));
+  const path = make("small", "wpath", row.path);
   path.title = row.path;
-  const tick = (label, key, after) => {
-    const l = make("label", "wtick"), box = make("input");
-    box.type = "checkbox";
-    box.checked = row[key];
-    box.onchange = () => { row[key] = box.checked; li.classList.remove("bad"); if (after) after(); };
-    l.append(box, make("span", "", label));
-    return l;
-  };
-  ticks.append(tick("Rename new files", "rename"),
-    tick("Render into video", "render", () => { out.hidden = !row.render; showLines(); }));
-  out.hidden = !row.render;
-  const dest = make("input"), choose = make("button", "", "Choose");
-  dest.type = "text";
-  dest.value = row.output;
-  dest.spellcheck = false;
-  dest.placeholder = "The folder ProPresenter's smart playlist watches";
-  dest.setAttribute("aria-label", "Save the video to");
-  dest.oninput = () => { row.output = dest.value; li.classList.remove("bad"); showLines(); };
-  choose.type = "button";
-  choose.onclick = inDialog(els.keymsg, async () => {
-    const { folder } = await api("pick-folder");
-    if (folder) { dest.value = row.output = folder; li.classList.remove("bad"); showLines(); }
-  });
-  const where = make("div", "wdest", "Save video to"), keyrow = make("span", "keyrow");
-  keyrow.append(dest, choose);
-  where.append(keyrow);
-  const line = make("p", "wline");
-  line.append(make("span"), " ", linkButton("Render now", inDialog(els.keymsg, () => renderNow(row))));
-  out.append(where, line);
-  li.append(top, path, ticks, out);
-  li.classList.toggle("bad", !!bad && folderKey(bad) === folderKey(row.path));
+  li.append(top, path);
+  if (row.render) {
+    const line = make("p", "wline");
+    line.append(make("span"), " ", linkButton("Render now", inDialog(els.keymsg, () => renderNow(row))));
+    li.append(line);
+  }
+  li.classList.toggle("bad", !!bad && (folderKey(bad) === folderKey(row.path) || folderKey(bad) === folderKey(row.output)));
   return li;
 }
 
+// The folders in Settings and, while it is open, on the folders map.
 function renderFolders(bad) {
   els.wList.innerHTML = "";
-  if (!watchRows.length) els.wList.appendChild(make("li", "none", "No folders yet: paste a path or click Choose, then Add."));
+  if (!watchRows.length) els.wList.appendChild(make("li", "none", "No folders yet: click Open above to add them on the folders map."));
   watchRows.forEach((row, i) => els.wList.appendChild(folderRow(row, i, bad)));
   showLines();
+  if ($("how").open) howDraw(bad);
 }
 
 // Each loop's line: its video, or what the background copy is doing with it. Only a
@@ -804,19 +778,6 @@ function renderTimes(bad) {
   });
 }
 
-// Adds the path in the box (or the one given). Returns an error message, or "".
-function addFolder(path = els.wFolder.value) {
-  path = cleanFolder(path);
-  els.wFolder.classList.remove("bad");
-  if (!path) return "Paste a folder's path or click Choose first.";
-  if (watchRows.some((r) => folderKey(r.path) === folderKey(path))) { els.wFolder.value = ""; return ""; }
-  if (watchRows.length >= MAX_FOLDERS) return `Smart Explorer can watch up to ${MAX_FOLDERS} folders.`;
-  watchRows.push({ path, name: folderName(path), rename: true, render: false, output: "" });
-  els.wFolder.value = "";
-  renderFolders();
-  return "";
-}
-
 function watchDraft() {
   return {  // rows as the server tidies them, so an unchanged table compares equal
     enabled: els.wOn.checked,
@@ -839,14 +800,6 @@ function leftAlone(path, n, named) {
 // Saves Watch folders when it changed. Returns false when the user backed out.
 async function saveWatch() {
   if (!watchState || !watchFilled) return true;
-  if (els.wFolder.value.trim()) {  // a path typed or chosen but not added yet: add it, don't drop it
-    const why = addFolder();
-    if (why) {
-      els.wFolder.classList.add("bad");
-      els.wFolder.focus();
-      throw new Error(why + " Nothing was saved yet.");
-    }
-  }
   // The server sends keys sorted, the draft doesn't: compare values, so an unchanged table
   // isn't sent (Save would then check every folder on disk just to save a new key).
   const canon = (v) => Array.isArray(v) ? v.map(canon) : v && typeof v === "object"
@@ -854,9 +807,8 @@ async function saveWatch() {
   const d = watchDraft(), s = watchState.settings, same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
   if (Object.keys(d).every((k) => same(d[k], s[k]))) return true;
   renderFolders();
-  const bad = (folder, msg) => {  // nothing is saved: say so next to what needs fixing
+  const bad = (folder, msg) => {  // nothing is saved: say so, and mark the folder that needs fixing
     if (folder) renderFolders(folder);
-    else { els.wFolder.classList.add("bad"); els.wFolder.focus(); }
     return new Error(msg + " Nothing was saved yet.");
   };
   if (d.enabled && !d.rows.length) throw bad(null, "Add a folder to watch first.");
@@ -975,20 +927,6 @@ els.save.onclick = inDialog(els.keymsg, saveSettings);  // a folder that can't b
 els.wOn.onchange = () => (els.wFields.hidden = !els.wOn.checked);
 els.wAuto.onchange = showAutostart;
 els.wShowStartup.onclick = inDialog(els.keymsg, () => api("watch/startup-items", {}));
-els.wFolder.oninput = () => els.wFolder.classList.remove("bad");
-const addFromBox = () => {
-  const why = addFolder();
-  say(els.keymsg, why, !why);
-  if (why) { els.wFolder.classList.add("bad"); els.wFolder.focus(); }
-};
-els.wAdd.onclick = addFromBox;
-els.wFolder.onkeydown = (e) => {  // Enter adds the folder here, not Save
-  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); addFromBox(); }
-};
-els.wPick.onclick = inDialog(els.keymsg, async () => {
-  const { folder } = await api("pick-folder");
-  if (folder) { els.wFolder.value = folder; addFromBox(); }
-});
 els.wLog.onclick = inDialog(els.keymsg, () => api("watch/log", {}));
 els.wAddTime.onclick = () => {
   watchTimes.push({ day: 6, from: "08:00", to: "12:00" });
