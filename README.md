@@ -105,3 +105,7 @@ Tests: `python -m pytest -q`. Build locally: `pip install pyinstaller && pyinsta
 3. GitHub Actions builds the Apple Silicon and Intel `.dmg` files and the Windows installer, checks each one (the app starts and reads PNG, HEIC and PDF; the Windows installer installs, starts and uninstalls), and publishes them as a release, in about five minutes. Point people at [releases/latest](../../releases/latest).
 
 The tag must match `version.py` or nothing is published. *Actions → build → Run workflow* builds the same files without publishing, for testing; download them from the run's *Artifacts*.
+
+---
+
+Made by [Fynn Projects](https://www.fynnprojects.com.au), custom apps for church production teams, trades and small businesses.
