@@ -9,6 +9,7 @@ one entry per folder.
 """
 import json
 import os
+import time
 from pathlib import Path
 
 import config
@@ -48,9 +49,21 @@ def _entry(data, folder):
             {f for f in e.get("prints", []) if isinstance(f, str)})
 
 
-def _save(data, folder, names, prints):
-    data[key(folder)] = {"names": sorted(names), "prints": sorted(prints)}
+def _save(data, folder, names, prints, recorded=None):
+    old = data.get(key(folder))
+    if recorded is None and isinstance(old, dict) and isinstance(old.get("recorded"), (int, float)):
+        recorded = old["recorded"]
+    data[key(folder)] = dict({"names": sorted(names), "prints": sorted(prints)},
+                             **({"recorded": recorded} if recorded is not None else {}))
     config.write_json(_path(), data)
+
+
+def recorded(folder):
+    """When the folder was recorded (watching began for it: its files then were left as
+    they are), or None. A record from before 0.8 doesn't say."""
+    e = _load().get(key(folder))
+    t = e.get("recorded") if isinstance(e, dict) else None
+    return t if isinstance(t, (int, float)) and not isinstance(t, bool) else None
 
 
 def has_record(folder):
@@ -93,7 +106,7 @@ def record_folder(folder):
     Returns how many there are."""
     files = visible(folder)
     entries = _prints(files)
-    _save(_load(), folder, {n.lower() for n, _ in entries}, {f for _, f in entries})
+    _save(_load(), folder, {n.lower() for n, _ in entries}, {f for _, f in entries}, recorded=time.time())
     return len(files)
 
 

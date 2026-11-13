@@ -49,6 +49,22 @@ def test_the_stop_file_stops_main(tmp_path):
     assert not (watch.watch_dir() / "stop").exists()
 
 
+def test_main_stops_and_says_so_when_every_look_fails(monkeypatch):
+    said, calls = [], []
+    monkeypatch.setattr(watch.notify, "notify", lambda text: said.append(text))
+
+    class W:
+        def tick(self):
+            calls.append(1)
+            raise LookupError("unknown encoding: idna")  # its own files changed under it (a rebuild)
+
+    assert watch.main(sleep=lambda s: None, watcher=W()) == 0
+    assert len(calls) == watch.BROKEN_LOOKS and not watch.running()
+    assert said == ["Smart Explorer stopped watching: it kept failing (unknown encoding: idna). "
+                    "Open Smart Explorer and click Start."]
+    assert watch.read_status()["state"] == "stopped"
+
+
 def test_main_survives_an_error_in_one_tick():
     calls = []
 

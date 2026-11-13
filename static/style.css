@@ -147,9 +147,58 @@ h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-
 @keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(560%); } }
 
 /* ---------- empty: a big, obvious place to start ---------- */
+/* Two ways in: watched folders rename by themselves; a dropped folder is renamed now. */
 .empty {
-  margin-top: 16px; padding: 56px 24px; text-align: center;
+  display: grid; grid-template-columns: 1fr 1fr; margin-top: 16px; padding: 40px 12px; text-align: center;
   border: 2px dashed var(--line-2); border-radius: 16px; background: var(--surface);
+}
+.empty .way { padding: 8px 28px; }
+.empty .way + .way { border-left: 1px solid var(--line); }
+/* The Sunday check, in the first half while watching is on: green, amber and red mean
+   how things stand, and nothing else on the screen uses them. */
+.empty .way.watching { text-align: left; }
+.sunday { max-width: 520px; margin: 0 auto; }
+.way.watching #autoOpen { margin-top: 14px; }
+.sun-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.sun-head b { display: block; font-size: 16px; }
+.sun-head small { display: block; font-size: 12.5px; color: var(--mute); }
+.sun-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--surface-2); color: var(--mute); }
+.sun-badge svg, .sun-rows svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sun-badge svg { width: 22px; height: 22px; }
+.sunday[data-state="ok"] .sun-badge { background: var(--ok-soft); color: var(--ok); }
+.sunday[data-state="warn"] .sun-badge { background: #fffaeb; color: #b54708; }
+.sunday[data-state="bad"] .sun-badge { background: var(--err-soft); color: var(--err); }
+.sun-rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+/* A folder per line: coloured icon, name, a word or two in a matching pill. The sentences
+   and the Latest list only show under Details. */
+.sun-rows li {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 4px 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.sun-rows b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.sun-dot { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--mute); }
+.sun-dot svg { width: 17px; height: 17px; stroke-width: 2.4; }
+.sun-pill { padding: 4px 11px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.sun-ok .sun-dot, .sun-ok .sun-pill { background: var(--ok-soft); color: var(--ok); }
+.sun-warn .sun-dot, .sun-warn .sun-pill { background: #fffaeb; color: #b54708; }
+.sun-bad .sun-dot, .sun-bad .sun-pill { background: var(--err-soft); color: var(--err); }
+.sun-work .sun-dot, .sun-work .sun-pill { background: var(--accent-soft); color: var(--accent); }
+.sun-rows .sun-more { grid-column: 2 / -1; font-size: 12px; line-height: 1.45; color: var(--mute); }
+.sunday:not(.open) .sun-more, .sunday:not(.open) .sun-latest { display: none; }
+.sun-latest { margin-top: 12px; font-size: 12.5px; line-height: 1.7; color: var(--mute); }
+.sun-latest:empty { display: none; }
+.sun-note button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
+.sun-label { font-weight: 600; }
+.sun-when { display: inline-block; min-width: 88px; }
+.sun-latest code { font-family: var(--mono); font-size: 11.5px; }
+.sun-latest b { color: var(--ink-2); }
+.empty .sun-note { max-width: none; margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+@media (max-width: 760px) {
+  .empty { grid-template-columns: 1fr; }
+  .empty .way + .way { margin-top: 24px; padding-top: 32px; border-left: 0; border-top: 1px solid var(--line); }
 }
 .empty-icon {
   display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px;
@@ -343,8 +392,150 @@ dialog input.bad { border-color: var(--err); box-shadow: 0 0 0 3px rgba(217, 45,
   padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
   font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
 }
-.keyrow #wAdd { margin-left: -2px; }
+
+/* The folders in Settings, to read (the folders map changes them); a loop's line under it */
+dialog#settings { width: min(640px, 94vw); }
+.wlist li.wrow { display: grid; gap: 4px; align-items: stretch; padding: 10px 12px; }
+.wrow .wtop { display: flex; align-items: baseline; gap: 10px; }
+.wrow .wname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.wrow .wjob { font-size: 12.5px; font-weight: 400; color: var(--mute); text-align: right; }
+.wrow small.wpath { margin: -2px 0 0 1px; }
+.wrow .wline { margin: 6px 0 0; font-size: 12.5px; font-weight: 400; color: var(--mute); }
+.wrow .wline.err { color: var(--err); }
+.wtimes li.wtime { gap: 8px; padding: 6px 10px; font-weight: 400; font-size: 13px; color: var(--mute); }
+.wtimes select, .wtimes input { padding: 5px 8px; font-size: 13px; box-shadow: none; }
+.wtimes select { flex: 1; min-width: 0; }
+.wtimes li.wtime > button.link { margin-left: auto; }
+#wAddTime, .wrow .wline button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
+#wAddTime { font-size: 13px; }
 #updateMsg:empty { display: none; }
+
+/* ---------- folders map ---------- */
+/* The map beside its buttons and steps, each scrolling by itself, so a click never moves the
+   map out of view. In a narrow window they stack. */
+dialog#how { width: min(1140px, 96vw); }
+#howBody {
+  flex: 1; min-height: min(600px, calc(92vh - 200px)); overflow: hidden;  /* the same height whichever steps show */
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(250px, 26vw, 310px); gap: 24px; align-items: start;
+}
+#howMap, .how-rail { max-height: calc(92vh - 200px); overflow: auto; }
+@media (max-width: 1060px) {
+  #howBody { display: block; overflow: auto; }
+  #howMap, .how-rail { max-height: none; overflow: visible; }
+  .how-rail { margin-top: 14px; }
+}
+#howMap { --edge: #667085; --reach: 36px; padding: 2px; font-size: 12.5px; }
+#howMap [data-on] { transition: opacity .2s; }
+#howMap .how-dim { opacity: .18; }
+#howMap small { display: block; min-height: 0; margin: 0; font-size: 11.5px; font-weight: 400; color: inherit; }
+.hm-band {
+  display: flex; align-items: center; gap: 18px; padding: 8px 16px;
+  border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface-2); color: var(--mute);
+}
+.hm-band > b { flex: none; font-size: 14px; color: var(--ink); }
+.hm-band span span { display: block; }
+/* Arrows: a line and a chevron. A box draws the arrow it sends (hm-out) or the one it gets (hm-in). */
+.hm-down { position: relative; height: 22px; }
+.hm-down::after { content: ""; position: absolute; left: 89px; top: 3px; bottom: 4px; border-left: 1.5px solid var(--edge); }
+.hm-down::before {
+  content: ""; position: absolute; left: 86px; bottom: 5px; width: 6px; height: 6px;
+  border-right: 1.5px solid var(--edge); border-bottom: 1.5px solid var(--edge); transform: rotate(45deg);
+}
+.hm-down.hm-right::after { left: auto; right: 106px; }
+.hm-down.hm-right::before { left: auto; right: 103px; }
+.hm-out::after, .hm-in::after { content: ""; position: absolute; top: 50%; width: calc(var(--reach) - 6px); border-top: 1.5px solid var(--edge); }
+.hm-out::after { left: calc(100% + 2px); }
+.hm-in::after { right: calc(100% + 4px); }
+.hm-out::before, .hm-in::before {
+  content: ""; position: absolute; top: calc(50% - 3px); width: 6px; height: 6px;
+  border-top: 1.5px solid var(--edge); border-right: 1.5px solid var(--edge); transform: rotate(45deg);
+}
+.hm-out::before { left: calc(100% + var(--reach) - 11px); }
+.hm-in::before { left: -11px; }
+.hm-near { --reach: 18px; }
+/* Three places side by side: dashed areas behind the slide row and the loop row. */
+.hm-grid { display: grid; grid-template-columns: 156px 36px minmax(0, 1fr) 36px 190px; row-gap: 12px; padding: 12px; }
+.hm-zone { margin: -12px -10px; border: 1px dashed var(--line-2); border-radius: 12px; pointer-events: none; }
+.hm-head b { display: block; font-size: 14px; color: var(--ink); }
+.hm-head small { color: var(--mute); }
+.hm-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.hm-chip {
+  position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; min-height: 52px;
+  padding: 5px 8px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface-2); color: var(--ink-2);
+}
+.hm-chip > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+#howMap .hm-chip small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 1px; font-family: var(--mono); font-size: 11px; color: var(--mute); }
+.hm-col > .hm-chip:not(.ghost) { min-height: 74px; }  /* a slide folder's two ends line up */
+#howMap label.hm-weekly {
+  display: flex; align-items: center; gap: 5px; margin: 2px 0 0; font-size: 11.5px; font-weight: 400; color: var(--mute); cursor: pointer;
+}
+#howMap .hm-weekly input { display: inline-block; width: 13px; height: 13px; margin: 0; padding: 0; box-shadow: none; accent-color: var(--accent); }
+.hm-chip.ghost { min-height: 34px; align-items: center; border-style: dashed; background: none; color: var(--dim); }
+.hm-top { display: flex; align-items: center; gap: 2px; margin-left: -4px; }
+#howMap .hm-top input {
+  flex: 1; min-width: 0; margin: 0; padding: 2px 4px; border: 1px solid var(--line); border-radius: 5px;
+  background: var(--surface); box-shadow: none; font: 600 13px var(--ui); color: var(--ink);
+}
+#howMap .hm-top input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.hm-x { flex: none; padding: 0 2px 0 4px; border: 0; background: none; box-shadow: none; color: var(--dim); font-size: 16px; font-weight: 400; line-height: 1; }
+.hm-x:hover:not(:disabled) { background: none; border: 0; color: var(--err); }
+.hm-add {
+  min-height: 34px; padding: 6px 8px; border: 1px dashed var(--accent); border-radius: 7px;
+  background: var(--accent-soft); box-shadow: none; color: var(--accent); font-size: 12.5px;
+}
+.hm-add:hover:not(:disabled) { background: #e0e7ff; border-color: var(--accent); color: var(--accent-hover); }
+.hm-box {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 100px; padding: 12px; border: 1px solid; border-radius: 8px; text-align: center;
+}
+.hm-box b { font-size: 14px; }
+.hm-steps { display: flex; gap: 18px; }
+.hm-steps .hm-box { flex: 1; min-width: 0; }
+.hm-videos { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 10px 10px; border: 1px solid; border-radius: 8px; }
+.hm-vtitle { font-size: 13px; overflow-wrap: anywhere; }
+#howMap .hm-vfolder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-videos .hm-add { margin-top: 6px; white-space: normal; line-height: 1.3; }
+#howMap .hm-videos button.link { align-self: flex-start; margin-top: 2px; }
+#howMap .hm-hint { margin-top: 2px; font-size: 11px; line-height: 1.35; color: var(--mute); }
+#howMap button.link {
+  padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent);
+  font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px;
+}
+/* Colour says which place a box is in: Google Drive blue, Smart Explorer purple, ProPresenter
+   green. Never amber or red, which mean a problem (the Sunday check); orange here read as one. */
+.hm-col.drive .hm-chip:not(.ghost) { border-color: #85b7eb; background: #e6f1fb; }
+.hm-col.drive .hm-chip small, .hm-col.drive label.hm-weekly { color: #185fa5; }
+.hm-col.drive .hm-chip.ghost { border-color: #85b7eb; color: #378add; }
+.hm-grid .se { border-color: #7f77dd; background: #eeedfe; color: #534ab7; }
+.hm-grid .se b { color: #3c3489; }
+.hm-grid .pp { border-color: #0f6e56; background: #e1f5ee; color: #0f6e56; }
+.hm-grid .pp b { color: #085041; }
+.hm-grid .pp.ghost { border-style: dashed; background: none; }
+.hm-grid .pp.ghost b { color: #0f6e56; }
+.hm-grid .hm-videos.need { border-style: dashed; background: var(--surface); }
+.hm-grid .hm-chip.bad, .hm-grid .hm-videos.bad { border-color: var(--err); background: var(--err-soft); }
+.how-label { margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--mute); }
+.how-rail .how-label:first-child { margin-top: 0; }
+.how-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.how-row button { flex: 1 1 120px; padding: 8px 10px; font-size: 13px; white-space: normal; }
+.how-stack { flex-direction: column; flex-wrap: nowrap; }
+.how-stack button { flex: none; }
+.how-row button[aria-pressed="true"],
+.how-row button[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+#howOut { font-size: 14px; color: var(--ink-2); }
+#howOut:empty { display: none; }
+#howOut p { margin: 12px 0 0; }
+#howOut ol { margin: 12px 0 0; padding-left: 22px; }
+#howOut li { margin-bottom: 4px; }
+.how-paths { list-style: none; margin: 6px 0 4px; padding: 0; -webkit-user-select: text; user-select: text; }
+.how-paths b { font-weight: 600; }
+.how-paths small { display: block; min-height: 0; margin: 0 0 4px; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+#howMsg { margin: 8px 0 0; }
+.how-actions { margin-top: 6px; align-items: center; }
+.how-actions label.how-on { margin: 0; padding: 0; gap: 8px; align-items: center; }
 
 /* ---------- update banner ---------- */
 .update {

@@ -25,7 +25,7 @@ def start(fake):
 
 def add_folder(path):
     s = config.watch_settings()
-    config.save(watch=dict(s, folders=s["folders"] + [str(path)]))
+    config.save(watch=dict(s, rows=s["folders"] + [str(path)]))
 
 
 def test_each_folder_is_named_in_its_own_batch(two):
@@ -107,7 +107,7 @@ def test_a_removed_folder_is_no_longer_watched(two):
     fake = Fake()
     w = start(fake)
     run(w, w.clock, 30)
-    config.save(watch=dict(config.watch_settings(), folders=[str(a)]))
+    config.save(watch=dict(config.watch_settings(), rows=[str(a)]))
     run(w, w.clock, 10)
     png(b / "games.png")
     run(w, w.clock, 200)
@@ -179,7 +179,7 @@ def test_removing_a_missing_folder_clears_its_warning_and_last_batch(two):
     a.rename(a.with_name("gone"))
     run(w, w.clock, 200)
     assert watch.read_status()["state"] == "warning"
-    config.save(watch=dict(config.watch_settings(), folders=[str(a)]))  # Youth Media (and its batch) removed
+    config.save(watch=dict(config.watch_settings(), rows=[str(a)]))  # Youth Media (and its batch) removed
     a.with_name("gone").rename(a)
     run(w, w.clock, 10)
     status = watch.read_status()

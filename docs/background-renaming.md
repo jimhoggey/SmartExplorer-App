@@ -10,6 +10,16 @@ Smart Explorer names new slides and videos for ProPresenter by itself. Files put
 
 If it watches more than one folder, each message says which one, for example "3 files renamed and ready for ProPresenter in Youth Media".
 
+## The pre-service and post-service loops
+
+Put screens (pictures or videos) in the loop folder on Google Drive, or delete the ones you don't want. Smart Explorer makes them into one video for ProPresenter's loop by itself:
+
+1. **"Pre-service loop updated: 9 screens, 2 min 05 s."** Done: ProPresenter's loop plays the new screens.
+2. During service times nothing changes. New screens go into the loop once the service is over.
+3. **"ProPresenter is still using Pre-service loop.mp4…"** The loop is playing. Nothing to do: the new one goes in when it stops.
+
+Screens play in the order of their names, so name them `1 Welcome`, `2 Cafe` and so on to choose the order.
+
 ## When a message says something is wrong
 
 | The message says | What to do |
@@ -21,6 +31,8 @@ If it watches more than one folder, each message says which one, for example "3 
 | it has reached this month's limit | Tell the tech lead. |
 | it couldn't name a file | That file keeps its old name and still works in ProPresenter. |
 | it couldn't rename a file: it's open in another program | Nothing to do: it renames it by itself once the file is closed. To do it now, close the file in ProPresenter (after the service), then click **Try again** in Smart Explorer. |
+| it couldn't use a file in a loop | That screen is left out of the loop video. Upload it again (a picture or a video), or tell the tech lead. |
+| it couldn't update a loop | The old loop video keeps playing. Tell the tech lead. |
 
 Never rename or move files in that folder during a service. If the computer goes to sleep, nothing is renamed until it wakes up.
 

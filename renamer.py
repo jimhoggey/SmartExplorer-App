@@ -2,6 +2,7 @@ import errno
 import json
 import os
 import re
+import shutil
 import uuid
 from pathlib import Path
 
@@ -20,18 +21,22 @@ def sanitize(name, ext):
 
 
 def plan(items):
+    """(old path, new path) for each file to rename, a number added where the name is taken.
+    An item with "dir" goes into that folder (a drop folder's file into the folder ProPresenter
+    links), moving even when the name stays the same."""
     taken, out = set(), []
     for it in items:
         old = Path(it["path"])
+        folder = Path(it["dir"]) if it.get("dir") else old.parent
         stem = sanitize(it["new_name"], "")
         n, new = 1, stem + old.suffix
-        if new == old.name or not old.is_file():
+        if (new == old.name and folder == old.parent) or not old.is_file():
             continue
-        while (old.parent, new.lower()) in taken or (old.with_name(new).exists() and not old.with_name(new).samefile(old)):
+        while (str(folder), new.lower()) in taken or ((folder / new).exists() and not (folder / new).samefile(old)):
             n += 1
             new = "%s (%d)%s" % (stem, n, old.suffix)
-        taken.add((old.parent, new.lower()))
-        out.append((str(old), str(old.with_name(new))))
+        taken.add((str(folder), new.lower()))
+        out.append((str(old), str(folder / new)))
     return out
 
 
@@ -53,6 +58,24 @@ def why(e):
     return e.strerror or str(e)
 
 
+def _move_across(old, new):
+    """Move a file to another disk: copied beside its new name first, so ProPresenter never
+    sees half a file there, then swapped in, then the old one deleted. If the old one can't
+    be deleted (in use), the copy goes again, so the file is never in both places."""
+    part = new + ".part"
+    shutil.copy2(old, part)
+    try:
+        os.replace(part, new)
+    except OSError:
+        os.remove(part)
+        raise
+    try:
+        os.remove(old)
+    except OSError:
+        os.remove(new)
+        raise
+
+
 def apply(pairs, journal_dir=None):
     """Rename each (old, new) pair, carrying on past a file that can't be renamed (one in
     use must not stop the rest). Returns {"journal", "renamed", "moved": [[old, new]...],
@@ -65,7 +88,12 @@ def apply(pairs, journal_dir=None):
             # os.rename silently replaces an existing file on macOS and Linux.
             if os.path.exists(new) and not os.path.samefile(old, new):
                 raise FileExistsError(errno.EEXIST, "a file with that name appeared since the names were checked")
-            os.rename(old, new)
+            try:
+                os.rename(old, new)
+            except OSError as e:
+                if e.errno != errno.EXDEV:
+                    raise
+                _move_across(old, new)  # into a folder on another disk
         except OSError as e:
             out["failed"].append({"path": old, "to": new, "why": why(e), "in_use": in_use(e)})
             continue
